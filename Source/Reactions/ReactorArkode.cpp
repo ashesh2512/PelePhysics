@@ -410,11 +410,22 @@ ReactorArkode::cF_RHS(
   auto* rhoe_init = udata->rhoe_init;
   auto* rhoesrc_ext = udata->rhoesrc_ext;
   auto* rYsrc_ext = udata->rYsrc_ext;
-  amrex::ParallelFor(udata->ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
-    utils::fKernelSpec<Ordering>(
-      icell, ncells, dt_save, reactor_type, yvec_d, ydot_d, rhoe_init,
-      rhoesrc_ext, rYsrc_ext);
-  });
+
+  if (reactor_type == ReactorTypes::e_reactor_type) {
+    amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
+      utils::fKernelSpec<Ordering>(
+        icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
+        rYsrc_ext);
+    });
+  } else if (reactor_type == ReactorTypes::h_reactor_type) {
+    amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
+      utils::fKernelSpecLM<Ordering>(
+        icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
+        rYsrc_ext);
+    });
+  } else {
+    amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
+  }
 
   amrex::Gpu::Device::streamSynchronize();
 
@@ -449,8 +460,8 @@ ReactorArkode::print_final_stats(void* arkode_mem)
   }
 
 #ifdef AMREX_USE_OMP
-  amrex::Print() << "\nFinal Statistics: "
-                 << "(thread:" << omp_get_thread_num() << ", ";
+  amrex::Print() << "\nFinal Statistics: " << "(thread:" << omp_get_thread_num()
+                 << ", ";
   amrex::Print() << "arkodeMem:" << arkode_mem << ")\n";
 #else
   amrex::Print() << "\nFinal Statistics:\n";

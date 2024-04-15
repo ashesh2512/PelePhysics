@@ -101,9 +101,17 @@ ReactorRK64::react(
         sp = 0.0;
       }
       for (int stage = 0; stage < rkp.nstages_rk64; stage++) {
-        utils::fKernelSpec<Ordering>(
-          0, 1, current_time - time_init, captured_reactor_type, soln_reg, ydot,
-          rhoe_init, rhoesrc_ext, rYsrc_ext);
+        if (captured_reactor_type == ReactorTypes::e_reactor_type) {
+          utils::fKernelSpec<Ordering>(
+            0, 1, current_time - time_init, soln_reg, ydot, rhoe_init,
+            rhoesrc_ext, rYsrc_ext);
+        } else if (captured_reactor_type == ReactorTypes::h_reactor_type) {
+          utils::fKernelSpecLM<Ordering>(
+            0, 1, current_time - time_init, soln_reg, ydot, rhoe_init,
+            rhoesrc_ext, rYsrc_ext);
+        } else {
+          amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
+        }
 
         for (int sp = 0; sp < neq; sp++) {
           error_reg[sp] += rkp.err_rk64[stage] * dt_rk * ydot[sp];
@@ -253,9 +261,17 @@ ReactorRK64::react(
         sp = 0.0;
       }
       for (int stage = 0; stage < rkp.nstages_rk64; stage++) {
-        utils::fKernelSpec<Ordering>(
-          0, 1, current_time - time_init, captured_reactor_type, soln_reg, ydot,
-          rhoe_init, rhoesrc_ext, rYsrc_ext);
+        if (captured_reactor_type == ReactorTypes::e_reactor_type) {
+          utils::fKernelSpec<Ordering>(
+            0, 1, current_time - time_init, soln_reg, ydot, rhoe_init,
+            rhoesrc_ext, rYsrc_ext);
+        } else if (captured_reactor_type == ReactorTypes::h_reactor_type) {
+          utils::fKernelSpecLM<Ordering>(
+            0, 1, current_time - time_init, soln_reg, ydot, rhoe_init,
+            rhoesrc_ext, rYsrc_ext);
+        } else {
+          amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
+        }
 
         for (int sp = 0; sp < neq; sp++) {
           error_reg[sp] += rkp.err_rk64[stage] * dt_rk * ydot[sp];

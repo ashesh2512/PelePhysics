@@ -82,14 +82,31 @@ get_bdf_matrix_and_rhs(
     Jmat1d[(NUM_SPECIES + 1) * (NUM_SPECIES + 1) - 1];
 
   // FIXME: need to change this to Ordering
-  utils::fKernelSpec<utils::YCOrder>(
-    0, 1, current_time - time_init, reactor_type, soln, ydot, rhoe_init,
-    rhoesrc_ext, rYsrc_ext);
-
-  if (tstepscheme == TRPZSCHEME) {
+  if (reactor_type == ReactorTypes::e_reactor_type) {
     utils::fKernelSpec<utils::YCOrder>(
-      0, 1, current_time - time_init, reactor_type, soln_n, ydot_n, rhoe_init,
-      rhoesrc_ext, rYsrc_ext);
+      0, 1, current_time - time_init, soln, ydot, rhoe_init, rhoesrc_ext,
+      rYsrc_ext);
+  } else if (reactor_type == ReactorTypes::h_reactor_type) {
+    utils::fKernelSpecLM<utils::YCOrder>(
+      0, 1, current_time - time_init, soln, ydot, rhoe_init, rhoesrc_ext,
+      rYsrc_ext);
+  } else {
+    amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
+  }
+
+  // FIXME: need to change this to Ordering
+  if (tstepscheme == TRPZSCHEME) {
+    if (reactor_type == ReactorTypes::e_reactor_type) {
+      utils::fKernelSpec<utils::YCOrder>(
+        0, 1, current_time - time_init, soln_n, ydot_n, rhoe_init, rhoesrc_ext,
+        rYsrc_ext);
+    } else if (reactor_type == ReactorTypes::h_reactor_type) {
+      utils::fKernelSpecLM<utils::YCOrder>(
+        0, 1, current_time - time_init, soln_n, ydot_n, rhoe_init, rhoesrc_ext,
+        rYsrc_ext);
+    } else {
+      amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
+    }
   }
 
   for (int ii = 0; ii < (NUM_SPECIES + 1); ii++) {
