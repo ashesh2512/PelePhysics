@@ -358,6 +358,73 @@ public:
   }
 };
 
+///////////////////////////////////////////////////////////////////////////
+
+template <typename OrderType>
+__global__ void
+fKernelSpecCUDA(
+  const int ncells,
+  const amrex::Real dt_save,
+  const amrex::Real* yvec_d,
+  amrex::Real* ydot_d, // NOLINT(readability-non-const-parameter)
+  const amrex::Real* rhoe_init,
+  const amrex::Real* rhoesrc_ext,
+  const amrex::Real* rYs)
+{
+  const int block_size = 32;
+  __shared__ amrex::Real massfrac[block_size][NUM_SPECIES];
+  __shared__ amrex::Real ei_pt[block_size][NUM_SPECIES];
+  __shared__ amrex::Real cdots_pt[block_size][NUM_SPECIES];
+
+  int t_idx =  blockDim.x*blockIdx.x + threadIdx.x; // thread index
+
+  if (t_idx < ncells) {
+
+    amrex::Real rho_pt = 0.0;
+    for (unsigned int n = 0; n < NUM_SPECIES; n++) {
+      massfrac[threadIdx.x][n] = yvec_d[vec_index<OrderType>(n, t_idx, ncells)]; // check if threadIdx.x is correct indexing for massfrac
+      rho_pt += massfrac[threadIdx.x][n];
+    }
+    
+    __syncthreads();
+
+    const amrex::Real rho_pt_inv = 1.0 / rho_pt;
+
+    for (unsigned int n = 0; n < NUM_SPECIES; n++) {
+      massfrac[threadIdx.x][n] *= rho_pt_inv;
+    }
+
+    const amrex::Real nrg_pt =
+      (rhoe_init[t_idx] + rhoesrc_ext[t_idx] * dt_save) * rho_pt_inv;
+
+    amrex::Real temp_pt =
+      yvec_d[vec_index<OrderType>(NUM_SPECIES, t_idx, ncells)];
+
+    amrex::Real Cv_pt = 0.0;
+
+    auto eos = pele::physics::PhysicsType::eos();
+    eos.REY2T(rho_pt, nrg_pt, massfrac[threadIdx.x], temp_pt);
+    eos.RTY2Ei(rho_pt, temp_pt, massfrac[threadIdx.x], ei_pt[threadIdx.x]);
+    eos.RTY2Cv(rho_pt, temp_pt, massfrac[threadIdx.x], Cv_pt);
+    eos.RTY2WDOT(rho_pt, temp_pt, massfrac[threadIdx.x], cdots_pt[threadIdx.x]);
+
+    amrex::Real rhoesrc = rhoesrc_ext[t_idx];
+    for (int n = 0; n < NUM_SPECIES; n++) {
+      const amrex::Real cdot_rYs =
+        cdots_pt[threadIdx.x][n] + rYs[spec_index<OrderType>(n, t_idx, ncells)];
+      ydot_d[vec_index<OrderType>(n, t_idx, ncells)] = cdot_rYs;
+      rhoesrc -= cdot_rYs * ei_pt[threadIdx.x][n];
+    }
+
+    __syncthreads();
+
+    ydot_d[vec_index<OrderType>(NUM_SPECIES, t_idx, ncells)] =
+      rhoesrc * (rho_pt_inv / Cv_pt);
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////
+
 template <typename OrderType>
 AMREX_GPU_DEVICE AMREX_FORCE_INLINE void
 fKernelSpec(

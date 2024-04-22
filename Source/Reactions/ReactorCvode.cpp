@@ -1715,21 +1715,32 @@ ReactorCvode::cF_RHS(
   auto* rhoesrc_ext = udata->rhoesrc_ext;
   auto* rYsrc_ext = udata->rYsrc_ext;
 
-  if (reactor_type == ReactorTypes::e_reactor_type) {
-    amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
-      utils::fKernelSpec<Ordering>(
-        icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
-        rYsrc_ext);
-    });
-  } else if (reactor_type == ReactorTypes::h_reactor_type) {
-    amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
-      utils::fKernelSpecLM<Ordering>(
-        icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
-        rYsrc_ext);
-    });
-  } else {
-    amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
-  }
+  //////////////////////////////////////////////////////////////////////
+
+  const int ncells_per_block = 32; // based on available shared memory in A100
+  dim3 block(ncells_per_block);
+  dim3 grid((ncells + block.x - 1) / block.x); // num blocks per grid - assumes ncells number of threads
+
+  utils::fKernelSpecCUDA<Ordering><<<grid, block>>>(
+    ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
+
+  //////////////////////////////////////////////////////////////////////
+
+  // if (reactor_type == ReactorTypes::e_reactor_type) {
+  //   amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
+  //     utils::fKernelSpec<Ordering>(
+  //       icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init,
+  //       rhoesrc_ext, rYsrc_ext);
+  //   });
+  // } else if (reactor_type == ReactorTypes::h_reactor_type) {
+  //   amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
+  //     utils::fKernelSpecLM<Ordering>(
+  //       icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init,
+  //       rhoesrc_ext, rYsrc_ext);
+  // });
+  // } else {
+  //   amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
+  // }
 
   amrex::Gpu::Device::streamSynchronize();
   return 0;
