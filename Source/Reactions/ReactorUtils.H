@@ -49,7 +49,7 @@ struct is_ordering_type
 };
 
 template <typename OrderType>
-AMREX_GPU_DEVICE AMREX_FORCE_INLINE int
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE int
 vec_index(const int specie_idx, const int icell, const int /*ncells*/)
 {
   return icell * (NUM_SPECIES + 1) + specie_idx;
@@ -63,7 +63,7 @@ spec_index(const int specie_idx, const int icell, const int /*ncells*/)
 }
 
 template <>
-AMREX_GPU_DEVICE AMREX_FORCE_INLINE int
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE int
 vec_index<CYOrder>(const int specie_idx, const int icell, const int ncells)
 {
   return specie_idx * ncells + icell;
@@ -358,11 +358,9 @@ public:
   }
 };
 
-///////////////////////////////////////////////////////////////////////////
-
 template <typename OrderType>
 __global__ void
-fKernelSpecCUDA(
+fKernelSpec_CUDA(
   const int ncells,
   const amrex::Real dt_save,
   const amrex::Real* yvec_d,
@@ -371,59 +369,136 @@ fKernelSpecCUDA(
   const amrex::Real* rhoesrc_ext,
   const amrex::Real* rYs)
 {
-  const int block_size = 32;
-  __shared__ amrex::Real massfrac[block_size][NUM_SPECIES];
-  __shared__ amrex::Real ei_pt[block_size][NUM_SPECIES];
-  __shared__ amrex::Real cdots_pt[block_size][NUM_SPECIES];
+  if (blockIdx.x < ncells) {
 
-  int t_idx =  blockDim.x*blockIdx.x + threadIdx.x; // thread index
+    __shared__ amrex::Real massfrac[NUM_SPECIES];
+    __shared__ amrex::Real ei_pt[NUM_SPECIES];
+    __shared__ amrex::Real cdots_pt[NUM_SPECIES];
+    __shared__ volatile amrex::Real scratch[NUM_SPECIES];
 
-  if (t_idx < ncells) {
+    massfrac[threadIdx.x] = 0.0;
+    ei_pt[threadIdx.x] = 0.0;
+    cdots_pt[threadIdx.x] = 0.0;
+    scratch[threadIdx.x] = 0.0; // better way to initialize?
 
-    amrex::Real rho_pt = 0.0;
-    for (unsigned int n = 0; n < NUM_SPECIES; n++) {
-      massfrac[threadIdx.x][n] = yvec_d[vec_index<OrderType>(n, t_idx, ncells)]; // check if threadIdx.x is correct indexing for massfrac
-      rho_pt += massfrac[threadIdx.x][n];
+    if (threadIdx.x < NUM_SPECIES) {
+      massfrac[threadIdx.x] =
+        yvec_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
+      scratch[threadIdx.x] = massfrac[threadIdx.x];
     }
-    
     __syncthreads();
 
+    // Hard coded for warp sizes of 32
+    if (threadIdx.x < 32) {
+      scratch[threadIdx.x] += scratch[threadIdx.x + 32];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 16];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 8];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 4];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 2];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 1];
+    }
+    __syncthreads(); // not required if rho_pt assignment was happening in
+                     // shared memory by threadIdx.x == 0
+
+    // this "should" be a broadcast
+    const amrex::Real rho_pt = scratch[0];
     const amrex::Real rho_pt_inv = 1.0 / rho_pt;
 
-    for (unsigned int n = 0; n < NUM_SPECIES; n++) {
-      massfrac[threadIdx.x][n] *= rho_pt_inv;
-    }
+    massfrac[threadIdx.x] *= rho_pt_inv;
+    __syncthreads(); // before next usage of massfrac
 
     const amrex::Real nrg_pt =
-      (rhoe_init[t_idx] + rhoesrc_ext[t_idx] * dt_save) * rho_pt_inv;
+      (rhoe_init[blockIdx.x] + rhoesrc_ext[blockIdx.x] * dt_save) * rho_pt_inv;
 
     amrex::Real temp_pt =
-      yvec_d[vec_index<OrderType>(NUM_SPECIES, t_idx, ncells)];
+      yvec_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)];
 
     amrex::Real Cv_pt = 0.0;
-
-    auto eos = pele::physics::PhysicsType::eos();
-    eos.REY2T(rho_pt, nrg_pt, massfrac[threadIdx.x], temp_pt);
-    eos.RTY2Ei(rho_pt, temp_pt, massfrac[threadIdx.x], ei_pt[threadIdx.x]);
-    eos.RTY2Cv(rho_pt, temp_pt, massfrac[threadIdx.x], Cv_pt);
-    eos.RTY2WDOT(rho_pt, temp_pt, massfrac[threadIdx.x], cdots_pt[threadIdx.x]);
-
-    amrex::Real rhoesrc = rhoesrc_ext[t_idx];
-    for (int n = 0; n < NUM_SPECIES; n++) {
-      const amrex::Real cdot_rYs =
-        cdots_pt[threadIdx.x][n] + rYs[spec_index<OrderType>(n, t_idx, ncells)];
-      ydot_d[vec_index<OrderType>(n, t_idx, ncells)] = cdot_rYs;
-      rhoesrc -= cdot_rYs * ei_pt[threadIdx.x][n];
+    if (threadIdx.x == 0) {
+      auto eos = pele::physics::PhysicsType::eos();
+      eos.REY2T(rho_pt, nrg_pt, massfrac, temp_pt);
+      eos.RTY2Ei(rho_pt, temp_pt, massfrac, ei_pt);
+      eos.RTY2Cv(rho_pt, temp_pt, massfrac, Cv_pt);
+      eos.RTY2WDOT(rho_pt, temp_pt, massfrac, cdots_pt);
     }
-
     __syncthreads();
 
-    ydot_d[vec_index<OrderType>(NUM_SPECIES, t_idx, ncells)] =
-      rhoesrc * (rho_pt_inv / Cv_pt);
+    if (threadIdx.x < NUM_SPECIES) {
+      scratch[threadIdx.x] =
+        cdots_pt[threadIdx.x] +
+        rYs[spec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
+      ydot_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)] =
+        scratch[threadIdx.x];
+      scratch[threadIdx.x] *= ei_pt[threadIdx.x];
+    }
+    __syncthreads();
+
+    if (threadIdx.x < 32) {
+      scratch[threadIdx.x] += scratch[threadIdx.x + 32];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 16];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 8];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 4];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 2];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 1];
+    }
+
+    if (threadIdx.x == 0) {
+      ydot_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)] =
+        (rhoesrc_ext[blockIdx.x] - scratch[0]) * (rho_pt_inv / Cv_pt);
+    }
   }
 }
 
-///////////////////////////////////////////////////////////////////////////
+template <typename OrderType>
+__global__ void
+fKernelSpec(
+  const int ncells,
+  const amrex::Real dt_save,
+  const amrex::Real* yvec_d,
+  amrex::Real* ydot_d, // NOLINT(readability-non-const-parameter)
+  const amrex::Real* rhoe_init,
+  const amrex::Real* rhoesrc_ext,
+  const amrex::Real* rYs)
+{
+  amrex::Real rho_pt = 0.0;
+  amrex::GpuArray<amrex::Real, NUM_SPECIES> massfrac = {0.0};
+  for (int n = 0; n < NUM_SPECIES; n++) {
+    massfrac[n] = yvec_d[vec_index<OrderType>(n, threadIdx.x, ncells)];
+    rho_pt += massfrac[n];
+  }
+  const amrex::Real rho_pt_inv = 1.0 / rho_pt;
+
+  for (int n = 0; n < NUM_SPECIES; n++) {
+    massfrac[n] *= rho_pt_inv;
+  }
+
+  const amrex::Real nrg_pt =
+    (rhoe_init[threadIdx.x] + rhoesrc_ext[threadIdx.x] * dt_save) * rho_pt_inv;
+
+  amrex::Real temp_pt =
+    yvec_d[vec_index<OrderType>(NUM_SPECIES, threadIdx.x, ncells)];
+
+  amrex::Real Cv_pt = 0.0;
+  amrex::GpuArray<amrex::Real, NUM_SPECIES> ei_pt = {0.0};
+
+  auto eos = pele::physics::PhysicsType::eos();
+  eos.REY2T(rho_pt, nrg_pt, massfrac.arr, temp_pt);
+  eos.RTY2Ei(rho_pt, temp_pt, massfrac.arr, ei_pt.arr);
+  eos.RTY2Cv(rho_pt, temp_pt, massfrac.arr, Cv_pt);
+
+  amrex::GpuArray<amrex::Real, NUM_SPECIES> cdots_pt = {0.0};
+  eos.RTY2WDOT(rho_pt, temp_pt, massfrac.arr, cdots_pt.arr);
+
+  amrex::Real rhoesrc = rhoesrc_ext[threadIdx.x];
+  for (int n = 0; n < NUM_SPECIES; n++) {
+    const amrex::Real cdot_rYs =
+      cdots_pt[n] + rYs[spec_index<OrderType>(n, threadIdx.x, ncells)];
+    ydot_d[vec_index<OrderType>(n, threadIdx.x, ncells)] = cdot_rYs;
+    rhoesrc -= cdot_rYs * ei_pt[n];
+  }
+  ydot_d[vec_index<OrderType>(NUM_SPECIES, threadIdx.x, ncells)] =
+    rhoesrc * (rho_pt_inv / Cv_pt);
+}
 
 template <typename OrderType>
 AMREX_GPU_DEVICE AMREX_FORCE_INLINE void

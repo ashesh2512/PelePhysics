@@ -1700,6 +1700,9 @@ ReactorCvode::cF_RHS(
 #ifdef AMREX_USE_GPU
   amrex::Real* yvec_d = N_VGetDeviceArrayPointer(y_in);
   amrex::Real* ydot_d = N_VGetDeviceArrayPointer(ydot_in);
+
+  N_Vector ydot_d_opt = N_VClone(ydot_in);
+  amrex::Real* ydot_d_opt_ptr = N_VGetDeviceArrayPointer(ydot_d_opt);
 #else
   amrex::Real* yvec_d = N_VGetArrayPointer(y_in);
   amrex::Real* ydot_d = N_VGetArrayPointer(ydot_in);
@@ -1715,34 +1718,66 @@ ReactorCvode::cF_RHS(
   auto* rhoesrc_ext = udata->rhoesrc_ext;
   auto* rYsrc_ext = udata->rYsrc_ext;
 
-  //////////////////////////////////////////////////////////////////////
-
-  const int ncells_per_block = 32; // based on available shared memory in A100
-  dim3 block(ncells_per_block);
-  dim3 grid((ncells + block.x - 1) / block.x); // num blocks per grid - assumes ncells number of threads
-
-  utils::fKernelSpecCUDA<Ordering><<<grid, block>>>(
-    ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
-
-  //////////////////////////////////////////////////////////////////////
-
-  // if (reactor_type == ReactorTypes::e_reactor_type) {
-  //   amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
-  //     utils::fKernelSpec<Ordering>(
-  //       icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init,
-  //       rhoesrc_ext, rYsrc_ext);
-  //   });
-  // } else if (reactor_type == ReactorTypes::h_reactor_type) {
-  //   amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
-  //     utils::fKernelSpecLM<Ordering>(
-  //       icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init,
-  //       rhoesrc_ext, rYsrc_ext);
-  // });
-  // } else {
-  //   amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
-  // }
-
+  if (reactor_type == ReactorTypes::e_reactor_type) {
+    amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
+      utils::fKernelSpec<Ordering>(
+        icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
+        rYsrc_ext);
+    });
+  } else if (reactor_type == ReactorTypes::h_reactor_type) {
+    amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
+      utils::fKernelSpecLM<Ordering>(
+        icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
+        rYsrc_ext);
+    });
+  } else {
+    amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
+  }
   amrex::Gpu::Device::streamSynchronize();
+
+  ///////////////////////////////////////////////////////////////////////
+
+  const int nthreads_per_block =
+    NUM_SPECIES + amrex::Gpu::Device::warp_size -
+    (NUM_SPECIES %
+     amrex::Gpu::Device::warp_size); // multiple of warpSize rounded up,
+                                     // based on number of species
+  dim3 block(nthreads_per_block);
+  dim3 grid(ncells); // 1 cell is assigned 1 block - could be inefficent for
+                     // chemsitry model with less number of species
+  utils::fKernelSpec_CUDA<Ordering><<<grid, block>>>(
+    ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext, rYsrc_ext);
+  amrex::Gpu::Device::synchronize();
+
+  ///////////////////////////////////////////////////////////////////////
+
+  N_VCopyFromDevice_Cuda(ydot_in);
+  N_VCopyFromDevice_Cuda(ydot_d_opt);
+  amrex::Real* ydot_h_base = N_VGetHostArrayPointer_Cuda(ydot_in);
+  amrex::Real* ydot_h_opt = N_VGetHostArrayPointer_Cuda(ydot_d_opt);
+
+  amrex::Real base = 0.0;
+  amrex::Real opt = 0.0;
+  amrex::Real diff = 0.0;
+  amrex::Real tol = 1e-8;
+  for (int i = 0; i < ncells; i++) {
+    for (int n = 0; n < (NUM_SPECIES + 1); n++) {
+      base = ydot_h_base[utils::vec_index<Ordering>(n, i, ncells)];
+      opt = ydot_h_opt[utils::vec_index<Ordering>(n, i, ncells)];
+
+      diff = base - opt;
+
+      if ((std::abs(diff) > tol) && (std::abs(diff / base) > tol)) {
+        printf(
+          "Base: %16.16f, Opt: %16.16f, Abs Diff: %16.16f, Rel Diff: %16.16f, "
+          "for cell %d, for species %d \n",
+          base, opt, std::abs(diff), std::abs(diff / base), i, n);
+        amrex::Abort("Someone messed up the computations.");
+      }
+    }
+  }
+  N_VDestroy(ydot_d_opt);
+
   return 0;
 }
 
