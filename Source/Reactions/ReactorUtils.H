@@ -414,15 +414,17 @@ fKernelSpec_CUDA(
       yvec_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)];
 
     amrex::Real Cv_pt = 0.0;
+    auto eos = pele::physics::PhysicsType::eos();
     if (threadIdx.x == 0) {
-      auto eos = pele::physics::PhysicsType::eos();
-      eos.REY2T(rho_pt, nrg_pt, massfrac, temp_pt);
-      eos.RTY2Ei(rho_pt, temp_pt, massfrac, ei_pt);
-      eos.RTY2Cv(rho_pt, temp_pt, massfrac, Cv_pt);
-      eos.RTY2WDOT(rho_pt, temp_pt, massfrac, cdots_pt);
+      eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac, temp_pt);
+      eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac, Cv_pt);
+      eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac, ei_pt);
     }
     __syncthreads();
+    
+    eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
 
+    scratch[threadIdx.x] = 0.0;
     if (threadIdx.x < NUM_SPECIES) {
       scratch[threadIdx.x] =
         cdots_pt[threadIdx.x] +
@@ -460,10 +462,13 @@ fKernelSpec(
   const amrex::Real* rhoesrc_ext,
   const amrex::Real* rYs)
 {
+  const int tidx =  blockDim.x*blockIdx.x + threadIdx.x; // thread index
+  if (tidx >= ncells) return;
+
   amrex::Real rho_pt = 0.0;
   amrex::GpuArray<amrex::Real, NUM_SPECIES> massfrac = {0.0};
   for (int n = 0; n < NUM_SPECIES; n++) {
-    massfrac[n] = yvec_d[vec_index<OrderType>(n, threadIdx.x, ncells)];
+    massfrac[n] = yvec_d[vec_index<OrderType>(n, tidx, ncells)];
     rho_pt += massfrac[n];
   }
   const amrex::Real rho_pt_inv = 1.0 / rho_pt;
@@ -473,10 +478,10 @@ fKernelSpec(
   }
 
   const amrex::Real nrg_pt =
-    (rhoe_init[threadIdx.x] + rhoesrc_ext[threadIdx.x] * dt_save) * rho_pt_inv;
+    (rhoe_init[tidx] + rhoesrc_ext[tidx] * dt_save) * rho_pt_inv;
 
   amrex::Real temp_pt =
-    yvec_d[vec_index<OrderType>(NUM_SPECIES, threadIdx.x, ncells)];
+    yvec_d[vec_index<OrderType>(NUM_SPECIES, tidx, ncells)];
 
   amrex::Real Cv_pt = 0.0;
   amrex::GpuArray<amrex::Real, NUM_SPECIES> ei_pt = {0.0};
@@ -489,14 +494,14 @@ fKernelSpec(
   amrex::GpuArray<amrex::Real, NUM_SPECIES> cdots_pt = {0.0};
   eos.RTY2WDOT(rho_pt, temp_pt, massfrac.arr, cdots_pt.arr);
 
-  amrex::Real rhoesrc = rhoesrc_ext[threadIdx.x];
+  amrex::Real rhoesrc = rhoesrc_ext[tidx];
   for (int n = 0; n < NUM_SPECIES; n++) {
     const amrex::Real cdot_rYs =
-      cdots_pt[n] + rYs[spec_index<OrderType>(n, threadIdx.x, ncells)];
-    ydot_d[vec_index<OrderType>(n, threadIdx.x, ncells)] = cdot_rYs;
+      cdots_pt[n] + rYs[spec_index<OrderType>(n, tidx, ncells)];
+    ydot_d[vec_index<OrderType>(n, tidx, ncells)] = cdot_rYs;
     rhoesrc -= cdot_rYs * ei_pt[n];
   }
-  ydot_d[vec_index<OrderType>(NUM_SPECIES, threadIdx.x, ncells)] =
+  ydot_d[vec_index<OrderType>(NUM_SPECIES, tidx, ncells)] =
     rhoesrc * (rho_pt_inv / Cv_pt);
 }
 

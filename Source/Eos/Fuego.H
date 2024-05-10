@@ -6,6 +6,7 @@
 #include <AMReX_Utility.H>
 
 #include "mechanism.H"
+#include "mechanism_cuda.H"
 #include "PhysicsConstants.H"
 
 namespace pele::physics::eos {
@@ -46,12 +47,29 @@ struct Fuego
     TY2Cp(T, Y, Cp);
   }
 
+  __device__ __forceinline__
+  static void
+  TY2Cv_CUDA(const amrex::Real T, const amrex::Real Y[NUM_SPECIES], amrex::Real& Cv)
+  {
+    CKCVBS_CUDA(T, Y, Cv);
+  }
+
   AMREX_GPU_HOST_DEVICE
   AMREX_FORCE_INLINE
   static void
   TY2Cv(const amrex::Real T, const amrex::Real Y[NUM_SPECIES], amrex::Real& Cv)
   {
     CKCVBS(T, Y, Cv);
+  }
+
+  __device__ __forceinline__
+  static void RTY2Cv_CUDA(
+    const amrex::Real /*R*/,
+    const amrex::Real T,
+    const amrex::Real Y[NUM_SPECIES],
+    amrex::Real& Cv)
+  {
+    TY2Cv_CUDA(T, Y, Cv);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -115,6 +133,16 @@ struct Fuego
     Cs = std::sqrt(G * P / R);
   }
 
+  __device__ __forceinline__
+  static void
+  EY2T_CUDA(const amrex::Real E, const amrex::Real Y[NUM_SPECIES], amrex::Real& T)
+  {
+    // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_CUDA
+    // In SRK this will be different probably
+    int lierr = 0;
+    GET_T_GIVEN_EY_CUDA(E, Y, T, lierr);
+  }
+
   AMREX_GPU_HOST_DEVICE
   AMREX_FORCE_INLINE
   static void
@@ -124,6 +152,16 @@ struct Fuego
     // In SRK this will be different probably
     int lierr = 0;
     GET_T_GIVEN_EY(E, Y, T, lierr);
+  }
+
+  __device__ __forceinline__
+  static void REY2T_CUDA(
+    const amrex::Real /*R*/,
+    const amrex::Real E,
+    const amrex::Real Y[NUM_SPECIES],
+    amrex::Real& T)
+  {
+    EY2T_CUDA(E, Y, T);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -197,6 +235,24 @@ struct Fuego
     T = P * wbar / (R * Constants::RU);
   }
 
+  __device__ __forceinline__
+  static void RTY2WDOT_CUDA(
+    const amrex::Real R,
+    const amrex::Real T,
+    const amrex::Real Y[NUM_SPECIES],
+    amrex::Real WDOT[NUM_SPECIES],
+    volatile amrex::Real scratch[NUM_SPECIES])
+  {
+    scratch[threadIdx.x] = 0.0;
+
+    CKYTCR_CUDA(R, T, Y, scratch);
+    CKWC_CUDA(T, scratch, WDOT);
+    
+    if(threadIdx.x < 53){
+      WDOT[threadIdx.x] *= mw(threadIdx.x);
+    }
+  }
+
   AMREX_GPU_HOST_DEVICE
   AMREX_FORCE_INLINE
   static void RTY2WDOT(
@@ -244,11 +300,27 @@ struct Fuego
     CKYTCR(R, T, Y, acti);
   }
 
+  __device__ __forceinline__
+  static void T2Ei_CUDA(const amrex::Real T, amrex::Real Ei[NUM_SPECIES])
+  {
+    CKUMS_CUDA(T, Ei);
+  }
+
   AMREX_GPU_HOST_DEVICE
   AMREX_FORCE_INLINE
   static void T2Ei(const amrex::Real T, amrex::Real Ei[NUM_SPECIES])
   {
     CKUMS(T, Ei);
+  }
+
+  __device__ __forceinline__
+  static void RTY2Ei_CUDA(
+    const amrex::Real /*R*/,
+    const amrex::Real T,
+    const amrex::Real* /*Y[]*/,
+    amrex::Real Ei[NUM_SPECIES])
+  {
+    T2Ei_CUDA(T, Ei);
   }
 
   AMREX_GPU_HOST_DEVICE

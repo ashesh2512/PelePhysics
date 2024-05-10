@@ -1734,7 +1734,7 @@ ReactorCvode::cF_RHS(
     amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
   }
   amrex::Gpu::Device::streamSynchronize();
-
+  
   ///////////////////////////////////////////////////////////////////////
 
   const int nthreads_per_block =
@@ -1748,6 +1748,14 @@ ReactorCvode::cF_RHS(
   utils::fKernelSpec_CUDA<Ordering><<<grid, block>>>(
     ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext, rYsrc_ext);
   amrex::Gpu::Device::synchronize();
+
+  ///////////////////////////////////////////////////////////////////////
+
+  // utils::fKernelSpec<Ordering><<<
+  //   (ncells + nthreads_per_block - 1) / nthreads_per_block,
+  //   nthreads_per_block>>>(
+  //   ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
+  // amrex::Gpu::Device::synchronize();
 
   ///////////////////////////////////////////////////////////////////////
 
