@@ -49,7 +49,7 @@ struct Fuego
 
   __device__ __forceinline__
   static void
-  TY2Cv_CUDA(const amrex::Real T, const amrex::Real Y[NUM_SPECIES], amrex::Real& Cv)
+  TY2Cv_CUDA(const amrex::Real T, volatile const amrex::Real Y[NUM_SPECIES], amrex::Real& Cv)
   {
     CKCVBS_CUDA(T, Y, Cv);
   }
@@ -66,7 +66,7 @@ struct Fuego
   static void RTY2Cv_CUDA(
     const amrex::Real /*R*/,
     const amrex::Real T,
-    const amrex::Real Y[NUM_SPECIES],
+    volatile const amrex::Real Y[NUM_SPECIES],
     amrex::Real& Cv)
   {
     TY2Cv_CUDA(T, Y, Cv);
@@ -135,7 +135,7 @@ struct Fuego
 
   __device__ __forceinline__
   static void
-  EY2T_CUDA(const amrex::Real E, const amrex::Real Y[NUM_SPECIES], amrex::Real& T)
+  EY2T_CUDA(const amrex::Real E, volatile const amrex::Real Y[NUM_SPECIES], amrex::Real& T)
   {
     // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_CUDA
     // In SRK this will be different probably
@@ -158,7 +158,7 @@ struct Fuego
   static void REY2T_CUDA(
     const amrex::Real /*R*/,
     const amrex::Real E,
-    const amrex::Real Y[NUM_SPECIES],
+    volatile const amrex::Real Y[NUM_SPECIES],
     amrex::Real& T)
   {
     EY2T_CUDA(E, Y, T);
@@ -239,8 +239,8 @@ struct Fuego
   static void RTY2WDOT_CUDA(
     const amrex::Real R,
     const amrex::Real T,
-    const amrex::Real Y[NUM_SPECIES],
-    amrex::Real WDOT[NUM_SPECIES],
+    volatile const amrex::Real Y[NUM_SPECIES],
+    volatile amrex::Real WDOT[NUM_SPECIES],
     volatile amrex::Real scratch[NUM_SPECIES])
   {
     scratch[threadIdx.x] = 0.0;
@@ -301,7 +301,7 @@ struct Fuego
   }
 
   __device__ __forceinline__
-  static void T2Ei_CUDA(const amrex::Real T, amrex::Real Ei[NUM_SPECIES])
+  static void T2Ei_CUDA(const amrex::Real T, volatile amrex::Real Ei[NUM_SPECIES])
   {
     CKUMS_CUDA(T, Ei);
   }
@@ -317,8 +317,8 @@ struct Fuego
   static void RTY2Ei_CUDA(
     const amrex::Real /*R*/,
     const amrex::Real T,
-    const amrex::Real* /*Y[]*/,
-    amrex::Real Ei[NUM_SPECIES])
+    volatile const amrex::Real* /*Y[]*/,
+    volatile amrex::Real Ei[NUM_SPECIES])
   {
     T2Ei_CUDA(T, Ei);
   }

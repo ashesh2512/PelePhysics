@@ -371,9 +371,9 @@ fKernelSpec_CUDA(
 {
   if (blockIdx.x < ncells) {
 
-    __shared__ amrex::Real massfrac[NUM_SPECIES];
-    __shared__ amrex::Real ei_pt[NUM_SPECIES];
-    __shared__ amrex::Real cdots_pt[NUM_SPECIES];
+    __shared__ volatile amrex::Real massfrac[NUM_SPECIES];
+    __shared__ volatile amrex::Real ei_pt[NUM_SPECIES];
+    __shared__ volatile amrex::Real cdots_pt[NUM_SPECIES];
     __shared__ volatile amrex::Real scratch[NUM_SPECIES];
 
     massfrac[threadIdx.x] = 0.0;
