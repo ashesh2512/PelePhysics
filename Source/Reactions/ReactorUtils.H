@@ -360,7 +360,7 @@ public:
 
 template <typename OrderType>
 __global__ void
-fKernelSpec_CUDA(
+fKernelSpecOpt_CUDA(
   const int ncells,
   const amrex::Real dt_save,
   const amrex::Real* yvec_d,
@@ -453,7 +453,7 @@ fKernelSpec_CUDA(
 
 template <typename OrderType>
 __global__ void
-fKernelSpec(
+fKernelSpecBase_CUDA(
   const int ncells,
   const amrex::Real dt_save,
   const amrex::Real* yvec_d,
