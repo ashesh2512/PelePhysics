@@ -1718,44 +1718,44 @@ ReactorCvode::cF_RHS(
   auto* rhoesrc_ext = udata->rhoesrc_ext;
   auto* rYsrc_ext = udata->rYsrc_ext;
 
-  // if (reactor_type == ReactorTypes::e_reactor_type) {
-  //   amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
-  //     utils::fKernelSpec<Ordering>(
-  //       icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
-  //       rYsrc_ext);
-  //   });
-  // } else if (reactor_type == ReactorTypes::h_reactor_type) {
-  //   amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
-  //     utils::fKernelSpecLM<Ordering>(
-  //       icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
-  //       rYsrc_ext);
-  //   });
-  // } else {
-  //   amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
-  // }
-  // amrex::Gpu::Device::streamSynchronize();
+  if (reactor_type == ReactorTypes::e_reactor_type) {
+    amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
+      utils::fKernelSpec<Ordering>(
+        icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
+        rYsrc_ext);
+    });
+  } else if (reactor_type == ReactorTypes::h_reactor_type) {
+    amrex::ParallelFor(ncells, [=] AMREX_GPU_DEVICE(int icell) noexcept {
+      utils::fKernelSpecLM<Ordering>(
+        icell, ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext,
+        rYsrc_ext);
+    });
+  } else {
+    amrex::Abort("Wrong reactor type. Choose between 1 (e) or 2 (h).");
+  }
+  amrex::Gpu::Device::streamSynchronize();
 
   /////////////////////////////////////////////////////////////////////
 
   const int block_size = 128;
   utils::fKernelSpecBase_CUDA<Ordering><<<
     (ncells + block_size - 1) / block_size, block_size>>>(
-    ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
+    ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext, rYsrc_ext);
   cudaDeviceSynchronize();
   
   ///////////////////////////////////////////////////////////////////////
 
-  const int nthreads_per_block =
-    NUM_SPECIES + amrex::Gpu::Device::warp_size -
-    (NUM_SPECIES %
-     amrex::Gpu::Device::warp_size); // multiple of warpSize rounded up,
-                                     // based on number of species
-  dim3 block(nthreads_per_block);
-  dim3 grid(ncells); // 1 cell is assigned 1 block - could be inefficent for
-                     // chemsitry model with less number of species
-  utils::fKernelSpecOpt_CUDA<Ordering><<<grid, block>>>(
-    ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext, rYsrc_ext);
-  amrex::Gpu::Device::synchronize();
+  // const int nthreads_per_block =
+  //   NUM_SPECIES + amrex::Gpu::Device::warp_size -
+  //   (NUM_SPECIES %
+  //    amrex::Gpu::Device::warp_size); // multiple of warpSize rounded up,
+  //                                    // based on number of species
+  // dim3 block(nthreads_per_block);
+  // dim3 grid(ncells); // 1 cell is assigned 1 block - could be inefficent for
+  //                    // chemsitry model with less number of species
+  // utils::fKernelSpecOpt_CUDA<Ordering><<<grid, block>>>(
+  //   ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext, rYsrc_ext);
+  // amrex::Gpu::Device::synchronize();
 
   ///////////////////////////////////////////////////////////////////////
 

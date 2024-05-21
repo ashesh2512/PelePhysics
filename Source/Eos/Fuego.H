@@ -253,6 +253,22 @@ struct Fuego
     }
   }
 
+  __device__ __forceinline__  
+  static void RTY2WDOT_test(
+    const amrex::Real R,
+    const amrex::Real T,
+    volatile const amrex::Real Y[NUM_SPECIES],
+    volatile amrex::Real WDOT[NUM_SPECIES],
+    volatile amrex::Real scratch[NUM_SPECIES])
+  {
+    CKYTCR_test(R, T, Y, scratch);
+    CKWC_test(T, scratch, WDOT);
+
+    for (int n = 0; n < NUM_SPECIES; n++) {
+      WDOT[n] *= mw(n);
+    }
+  }
+
   AMREX_GPU_HOST_DEVICE
   AMREX_FORCE_INLINE
   static void RTY2WDOT(

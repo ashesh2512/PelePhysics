@@ -466,7 +466,7 @@ fKernelSpecBase_CUDA(
   if (tidx >= ncells) return;
 
   amrex::Real rho_pt = 0.0;
-  amrex::GpuArray<amrex::Real, NUM_SPECIES> massfrac = {0.0};
+  volatile amrex::Real massfrac[NUM_SPECIES] = {0.0};
   for (int n = 0; n < NUM_SPECIES; n++) {
     massfrac[n] = yvec_d[vec_index<OrderType>(n, tidx, ncells)];
     rho_pt += massfrac[n];
@@ -484,15 +484,16 @@ fKernelSpecBase_CUDA(
     yvec_d[vec_index<OrderType>(NUM_SPECIES, tidx, ncells)];
 
   amrex::Real Cv_pt = 0.0;
-  amrex::GpuArray<amrex::Real, NUM_SPECIES> ei_pt = {0.0};
+  volatile amrex::Real ei_pt[NUM_SPECIES]  = {0.0};
 
   auto eos = pele::physics::PhysicsType::eos();
-  eos.REY2T(rho_pt, nrg_pt, massfrac.arr, temp_pt);
-  eos.RTY2Ei(rho_pt, temp_pt, massfrac.arr, ei_pt.arr);
-  eos.RTY2Cv(rho_pt, temp_pt, massfrac.arr, Cv_pt);
+  eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac, temp_pt);
+  eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac, ei_pt);
+  eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac, Cv_pt);
 
-  amrex::GpuArray<amrex::Real, NUM_SPECIES> cdots_pt = {0.0};
-  eos.RTY2WDOT(rho_pt, temp_pt, massfrac.arr, cdots_pt.arr);
+  volatile amrex::Real cdots_pt[NUM_SPECIES] = {0.0};
+  volatile amrex::Real scratch[NUM_SPECIES] = {0.0};
+  eos.RTY2WDOT_test(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
 
   amrex::Real rhoesrc = rhoesrc_ext[tidx];
   for (int n = 0; n < NUM_SPECIES; n++) {

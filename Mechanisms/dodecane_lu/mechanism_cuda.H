@@ -5712,7 +5712,7 @@ void CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[])
     ums[i] *= RT * imw(i);
   }
 
-  // costs 5 decimals of accuracy and an extra sync - sticking to looping
+  // costs 5 decimals of regression and an extra sync - sticking to looping
   // if(threadIdx.x < 53) {
   //   ums[threadIdx.x] *= 8.31446261815324e+07 * T * imw(threadIdx.x);
   // }
@@ -5728,6 +5728,18 @@ void CKYTCR_CUDA(
 {
   if(threadIdx.x < 53){
     c[threadIdx.x] = rho * y[threadIdx.x] * imw(threadIdx.x);
+  }
+}
+
+__device__ __forceinline__
+void CKYTCR_test(
+  const amrex::Real rho,
+  amrex::Real /*T*/,
+  volatile const amrex::Real y[],
+  volatile amrex::Real c[])
+{
+  for (int i = 0; i < 53; i++) {
+    c[i] = rho * y[i] * imw(i);
   }
 }
 
@@ -5747,6 +5759,26 @@ void CKWC_CUDA(const amrex::Real T, volatile amrex::Real C[], volatile amrex::Re
   // convert to chemkin units
   C[threadIdx.x] *= 1.0e-6;
   wdot[threadIdx.x] *= 1.0e-6;
+}
+
+// compute the production rate for each species
+__device__ __forceinline__ 
+void CKWC_test(const amrex::Real T, volatile amrex::Real C[], volatile amrex::Real wdot[])
+{
+
+  // convert to SI
+  for (int id = 0; id < 53; ++id) {
+    C[id] *= 1.0e6;
+  }
+
+  // convert to chemkin units
+  productionRate_CUDA(wdot, C, T);
+
+  // convert to chemkin units
+  for (int id = 0; id < 53; ++id) {
+    C[id] *= 1.0e-6;
+    wdot[id] *= 1.0e-6;
+  }
 }
 
 #endif
