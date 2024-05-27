@@ -243,12 +243,10 @@ struct Fuego
     volatile amrex::Real WDOT[NUM_SPECIES],
     volatile amrex::Real scratch[NUM_SPECIES])
   {
-    scratch[threadIdx.x] = 0.0;
-
     CKYTCR_CUDA(R, T, Y, scratch);
     CKWC_CUDA(T, scratch, WDOT);
     
-    if(threadIdx.x < 53){
+    if(threadIdx.x < NUM_SPECIES){
       WDOT[threadIdx.x] *= mw(threadIdx.x);
     }
   }

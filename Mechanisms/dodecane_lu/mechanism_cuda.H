@@ -5704,18 +5704,14 @@ void GET_T_GIVEN_EY_CUDA(
 __device__ __forceinline__
 void CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[])
 {
-  amrex::Real RT = 8.31446261815324e+07 * T; // R*T
-
-  speciesInternalEnergy_CUDA(ums, T);
-
-  for (int i = 0; i < 53; i++) {
-    ums[i] *= RT * imw(i);
+  if (threadIdx.x == 0) {
+    speciesInternalEnergy_CUDA(ums, T);
   }
+  __syncthreads();
 
-  // costs 5 decimals of accuracy and an extra sync - sticking to looping
-  // if(threadIdx.x < 53) {
-  //   ums[threadIdx.x] *= 8.31446261815324e+07 * T * imw(threadIdx.x);
-  // }
+  if(threadIdx.x < NUM_SPECIES) {
+    ums[threadIdx.x] *= 8.31446261815324e+07 * T * imw(threadIdx.x);
+  }
 }
 
 // convert y[species] (mass fracs) to c[species] (molar conc)
@@ -5726,7 +5722,7 @@ void CKYTCR_CUDA(
   volatile const amrex::Real y[],
   volatile amrex::Real c[])
 {
-  if(threadIdx.x < 53){
+  if(threadIdx.x < NUM_SPECIES){
     c[threadIdx.x] = rho * y[threadIdx.x] * imw(threadIdx.x);
   }
 }

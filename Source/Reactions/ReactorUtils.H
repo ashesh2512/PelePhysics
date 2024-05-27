@@ -374,12 +374,9 @@ fKernelSpecOpt_CUDA(
     __shared__ volatile amrex::Real massfrac[NUM_SPECIES];
     __shared__ volatile amrex::Real ei_pt[NUM_SPECIES];
     __shared__ volatile amrex::Real cdots_pt[NUM_SPECIES];
-    __shared__ volatile amrex::Real scratch[NUM_SPECIES];
+    __shared__ volatile amrex::Real scratch[64];
 
-    massfrac[threadIdx.x] = 0.0;
-    ei_pt[threadIdx.x] = 0.0;
-    cdots_pt[threadIdx.x] = 0.0;
-    scratch[threadIdx.x] = 0.0; // better way to initialize?
+    scratch[threadIdx.x] = 0.0;
 
     if (threadIdx.x < NUM_SPECIES) {
       massfrac[threadIdx.x] =
@@ -418,13 +415,12 @@ fKernelSpecOpt_CUDA(
     if (threadIdx.x == 0) {
       eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac, temp_pt);
       eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac, Cv_pt);
-      eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac, ei_pt);
     }
     __syncthreads();
     
+    eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac, ei_pt);
     eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
 
-    scratch[threadIdx.x] = 0.0;
     if (threadIdx.x < NUM_SPECIES) {
       scratch[threadIdx.x] =
         cdots_pt[threadIdx.x] +
