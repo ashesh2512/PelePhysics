@@ -1750,10 +1750,7 @@ ReactorCvode::cF_RHS(
   {
     const int nthreads_per_block = 64; // multiple of warpSize rounded up,
                                        // based on number of species
-    dim3 block(nthreads_per_block);
-    dim3 grid(ncells); // 1 cell is assigned 1 block - could be inefficent
-                       // chemsitry model with less number of species
-    utils::fKernelSpec_CUDAReg<Ordering><<<grid, block>>>(
+    utils::fKernelSpec_CUDAReg<Ordering><<<ncells, nthreads_per_block>>>(
       ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
   }
   cudaDeviceSynchronize();
@@ -1761,12 +1758,8 @@ ReactorCvode::cF_RHS(
   ///////////////////////////////////////////////////////////////////////
 
   {
-    const int nthreads_per_block = 64; // multiple of warpSize rounded up,
-                                       // based on number of species
-    dim3 block(nthreads_per_block);
-    dim3 grid(ncells); // 1 cell is assigned 1 block - could be inefficent for
-                       // chemsitry model with less number of species
-    utils::fKernelSpecOpt_CUDA<Ordering><<<grid, block>>>(
+    const int nthreads_per_block = 32; // warpSize
+    utils::fKernelSpecOpt_CUDA<Ordering><<<ncells, nthreads_per_block>>>(
       ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext,
       rYsrc_ext);
   }
@@ -1782,7 +1775,7 @@ ReactorCvode::cF_RHS(
   amrex::Real base = 0.0;
   amrex::Real opt = 0.0;
   amrex::Real diff = 0.0;
-  amrex::Real tol = 1e-16;
+  amrex::Real tol = 1e-4;
   for (int i = 0; i < ncells; i++) {
     for (int n = 0; n < (NUM_SPECIES + 1); n++) {
       base = ydot_h_base[utils::vec_index<Ordering>(n, i, ncells)];

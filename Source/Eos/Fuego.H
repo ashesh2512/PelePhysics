@@ -298,8 +298,8 @@ struct Fuego
     CKYTCR_CUDA(R, T, Y, scratch);
     CKWC_CUDA(T, scratch, WDOT);
 
-    if (threadIdx.x < NUM_SPECIES) {
-      WDOT[threadIdx.x] *= mw(threadIdx.x);
+    for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+      WDOT[i] *= mw(i);
     }
   }
 

@@ -466,32 +466,31 @@ fKernelSpecOpt_CUDA(
     __shared__ volatile amrex::Real scratch[64];
 
     scratch[threadIdx.x] = 0.0;
+    scratch[threadIdx.x+32] = 0.0;
 
-    if (threadIdx.x < NUM_SPECIES) {
-      massfrac[threadIdx.x] =
-        yvec_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
-      scratch[threadIdx.x] = massfrac[threadIdx.x];
+    for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+      massfrac[i] =
+        yvec_d[vec_index<OrderType>(i, blockIdx.x, ncells)];
+      scratch[i] = massfrac[i];
     }
-    __syncthreads();
+    __syncwarp();
 
     // Hard coded for warp sizes of 32
-    if (threadIdx.x < 32) {
-      scratch[threadIdx.x] += scratch[threadIdx.x + 32];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 16];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 8];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 4];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 2];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 1];
-    }
-    __syncthreads(); // not required if rho_pt assignment was happening in
-                     // shared memory by threadIdx.x == 0
+    scratch[threadIdx.x] += scratch[threadIdx.x + 32];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 16];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 8];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 4];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 2];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 1];
 
     // this "should" be a broadcast
     const amrex::Real rho_pt = scratch[0];
     const amrex::Real rho_pt_inv = 1.0 / rho_pt;
 
-    massfrac[threadIdx.x] *= rho_pt_inv;
-    __syncthreads(); // before next usage of massfrac
+    for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+      massfrac[i] *= rho_pt_inv;
+    }
+    __syncwarp();
 
     const amrex::Real nrg_pt =
       (rhoe_init[blockIdx.x] + rhoesrc_ext[blockIdx.x] * dt_save) * rho_pt_inv;
@@ -505,29 +504,27 @@ fKernelSpecOpt_CUDA(
       eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac, temp_pt);
       eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac, Cv_pt);
     }
-    __syncthreads();
+    __syncwarp();
 
     eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac, ei_pt);
     eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
 
-    if (threadIdx.x < NUM_SPECIES) {
-      scratch[threadIdx.x] =
-        cdots_pt[threadIdx.x] +
-        rYs[spec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
-      ydot_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)] =
-        scratch[threadIdx.x];
-      scratch[threadIdx.x] *= ei_pt[threadIdx.x];
+    for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+      scratch[i] =
+        cdots_pt[i] +
+        rYs[spec_index<OrderType>(i, blockIdx.x, ncells)];
+      ydot_d[vec_index<OrderType>(i, blockIdx.x, ncells)] =
+        scratch[i];
+      scratch[i] *= ei_pt[i];
     }
-    __syncthreads();
+    __syncwarp();
 
-    if (threadIdx.x < 32) {
-      scratch[threadIdx.x] += scratch[threadIdx.x + 32];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 16];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 8];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 4];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 2];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 1];
-    }
+    scratch[threadIdx.x] += scratch[threadIdx.x + 32];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 16];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 8];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 4];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 2];
+    scratch[threadIdx.x] += scratch[threadIdx.x + 1];
 
     if (threadIdx.x == 0) {
       ydot_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)] =

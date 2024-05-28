@@ -1251,7 +1251,8 @@ CKCVBS_CUDA(
 
 // compute the e/(RT) at the given temperature
 __device__ __forceinline__ void
-speciesInternalEnergy_CUDA(volatile amrex::Real* species, const amrex::Real T)
+speciesInternalEnergy_CUDA(
+  volatile amrex::Real* species, const amrex::Real T)
 {
   const amrex::Real T2 = T * T;
   const amrex::Real T3 = T * T * T;
@@ -5715,10 +5716,10 @@ CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[])
   if (threadIdx.x == 0) {
     speciesInternalEnergy_CUDA(ums, T);
   }
-  __syncthreads();
+  __syncwarp();
 
-  if (threadIdx.x < NUM_SPECIES) {
-    ums[threadIdx.x] *= 8.31446261815324e+07 * T * imw(threadIdx.x);
+  for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+    ums[i] *= 8.31446261815324e+07 * T * imw(i);
   }
 }
 
@@ -5730,8 +5731,8 @@ CKYTCR_CUDA(
   volatile const amrex::Real y[],
   volatile amrex::Real c[])
 {
-  if (threadIdx.x < NUM_SPECIES) {
-    c[threadIdx.x] = rho * y[threadIdx.x] * imw(threadIdx.x);
+  for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+    c[i] = rho * y[i] * imw(i);
   }
 }
 
@@ -5741,17 +5742,21 @@ CKWC_CUDA(
   const amrex::Real T, volatile amrex::Real C[], volatile amrex::Real wdot[])
 {
   // convert to SI
-  C[threadIdx.x] *= 1.0e6;
-  __syncthreads();
+  for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+    C[i] *= 1.0e6;
+  }
+  __syncwarp();
 
   if (threadIdx.x == 0) {
     productionRate_CUDA(wdot, C, T);
   }
-  __syncthreads();
+  __syncwarp();
 
   // convert to chemkin units
-  C[threadIdx.x] *= 1.0e-6;
-  wdot[threadIdx.x] *= 1.0e-6;
+  for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+    C[i] *= 1.0e-6;
+    wdot[i] *= 1.0e-6;
+  }
 }
 
 #endif
