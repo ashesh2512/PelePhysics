@@ -5692,7 +5692,9 @@ GET_T_GIVEN_EY_CUDAReg(
   if (t1 < tmin || t1 > tmax) {
     t1 = tmin + (tmax - tmin) / (emax - emin) * (e - emin);
   }
+  int count = 0;
   for (int i = 0; i < maxiter; ++i) {
+    count = count + 1;
     CKUBMS_CUDAReg(t1, y, e1);
     CKCVBS_CUDAReg(t1, y, cv);
     dt = (e - e1) / cv;
@@ -5705,6 +5707,7 @@ GET_T_GIVEN_EY_CUDAReg(
     }
     t1 += dt;
   }
+  printf("Reg Count: %d \n", count);
   t = t1;
   ierr = 0;
 }

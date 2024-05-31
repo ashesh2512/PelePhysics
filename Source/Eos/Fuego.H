@@ -278,7 +278,7 @@ struct Fuego
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real WDOT[NUM_SPECIES],
-    volatile amrex::Real scratch[NUM_SPECIES])
+    volatile amrex::Real scratch[64])
   {
     CKYTCR_CUDAReg(R, T, Y, scratch);
     CKWC_CUDAReg(T, scratch, WDOT);
@@ -293,13 +293,14 @@ struct Fuego
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real WDOT[NUM_SPECIES],
-    volatile amrex::Real scratch[NUM_SPECIES])
-  {
-    CKYTCR_CUDA(R, T, Y, scratch);
-    CKWC_CUDA(T, scratch, WDOT);
-
-    if (threadIdx.x < NUM_SPECIES) {
-      WDOT[threadIdx.x] *= mw(threadIdx.x);
+    volatile amrex::Real scratch[64],
+    const int tidx)
+  {    
+    CKYTCR_CUDA(R, T, Y, scratch, tidx);
+    CKWC_CUDA(T, scratch, WDOT, tidx);
+    
+    if(tidx < NUM_SPECIES){
+      WDOT[tidx] *= mw(tidx);
     }
   }
 
@@ -356,10 +357,10 @@ struct Fuego
     CKUMS_CUDAReg(T, Ei);
   }
 
-  __device__ __forceinline__ static void
-  T2Ei_CUDA(const amrex::Real T, volatile amrex::Real Ei[NUM_SPECIES])
+  __device__ __forceinline__
+  static void T2Ei_CUDA(const amrex::Real T, volatile amrex::Real Ei[NUM_SPECIES], const int tidx)
   {
-    CKUMS_CUDA(T, Ei);
+    CKUMS_CUDA(T, Ei, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -382,9 +383,10 @@ struct Fuego
     const amrex::Real /*R*/,
     const amrex::Real T,
     volatile const amrex::Real* /*Y[]*/,
-    volatile amrex::Real Ei[NUM_SPECIES])
+    volatile amrex::Real Ei[NUM_SPECIES],
+    const int tidx)
   {
-    T2Ei_CUDA(T, Ei);
+    T2Ei_CUDA(T, Ei, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE

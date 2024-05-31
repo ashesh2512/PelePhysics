@@ -5691,7 +5691,9 @@ GET_T_GIVEN_EY_CUDA(
   if (t1 < tmin || t1 > tmax) {
     t1 = tmin + (tmax - tmin) / (emax - emin) * (e - emin);
   }
+  int count = 0;
   for (int i = 0; i < maxiter; ++i) {
+    count = count + 1;
     CKUBMS_CUDA(t1, y, e1);
     CKCVBS_CUDA(t1, y, cv);
     dt = (e - e1) / cv;
@@ -5704,21 +5706,22 @@ GET_T_GIVEN_EY_CUDA(
     }
     t1 += dt;
   }
+  printf("Opt Count: %d \n", count);
   t = t1;
   ierr = 0;
 }
 
 // Returns internal energy in mass units (Eq 30.)
-__device__ __forceinline__ void
-CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[])
+__device__ __forceinline__
+void CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[], const int tidx)
 {
-  if (threadIdx.x == 0) {
+  if (tidx == 0) {
     speciesInternalEnergy_CUDA(ums, T);
   }
   __syncthreads();
 
-  if (threadIdx.x < NUM_SPECIES) {
-    ums[threadIdx.x] *= 8.31446261815324e+07 * T * imw(threadIdx.x);
+  if(tidx < NUM_SPECIES) {
+    ums[tidx] *= 8.31446261815324e+07 * T * imw(tidx);
   }
 }
 
@@ -5728,30 +5731,30 @@ CKYTCR_CUDA(
   const amrex::Real rho,
   amrex::Real /*T*/,
   volatile const amrex::Real y[],
-  volatile amrex::Real c[])
+  volatile amrex::Real c[],
+  const int tidx)
 {
-  if (threadIdx.x < NUM_SPECIES) {
-    c[threadIdx.x] = rho * y[threadIdx.x] * imw(threadIdx.x);
+  if(tidx < NUM_SPECIES){
+    c[tidx] = rho * y[tidx] * imw(tidx);
   }
 }
 
 // compute the production rate for each species
-__device__ __forceinline__ void
-CKWC_CUDA(
-  const amrex::Real T, volatile amrex::Real C[], volatile amrex::Real wdot[])
+__device__ __forceinline__
+void CKWC_CUDA(const amrex::Real T, volatile amrex::Real C[], volatile amrex::Real wdot[], const int tidx)
 {
   // convert to SI
-  C[threadIdx.x] *= 1.0e6;
+  C[tidx] *= 1.0e6;
   __syncthreads();
 
-  if (threadIdx.x == 0) {
+  if(tidx == 0){
     productionRate_CUDA(wdot, C, T);
   }
   __syncthreads();
 
   // convert to chemkin units
-  C[threadIdx.x] *= 1.0e-6;
-  wdot[threadIdx.x] *= 1.0e-6;
+  C[tidx] *= 1.0e-6;
+  wdot[tidx] *= 1.0e-6;
 }
 
 #endif
