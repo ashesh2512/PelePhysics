@@ -1,11 +1,11 @@
-#ifndef MECHANISM_CUDA_H
-#define MECHANISM_CUDA_H
+#ifndef MECHANISM_CUDAREG_H
+#define MECHANISM_CUDAREG_H
 
 #include "mechanism.H"
 
 // get mean internal energy in mass units
 __device__ __forceinline__ void
-CKUBMS_CUDA(
+CKUBMS_CUDAReg(
   const amrex::Real T, volatile const amrex::Real y[], amrex::Real& ubms)
 {
   amrex::Real result = 0.0;
@@ -682,7 +682,7 @@ CKUBMS_CUDA(
 
 // Returns the mean specific heat at CV (Eq. 36)
 __device__ __forceinline__ void
-CKCVBS_CUDA(
+CKCVBS_CUDAReg(
   const amrex::Real T, volatile const amrex::Real y[], amrex::Real& cvbs)
 {
   amrex::Real result = 0.0;
@@ -1251,7 +1251,8 @@ CKCVBS_CUDA(
 
 // compute the e/(RT) at the given temperature
 __device__ __forceinline__ void
-speciesInternalEnergy_CUDA(volatile amrex::Real* species, const amrex::Real T)
+speciesInternalEnergy_CUDAReg(
+  volatile amrex::Real* species, const amrex::Real T)
 {
   const amrex::Real T2 = T * T;
   const amrex::Real T3 = T * T * T;
@@ -1709,7 +1710,7 @@ speciesInternalEnergy_CUDA(volatile amrex::Real* species, const amrex::Real T)
 }
 
 __device__ __forceinline__ void
-productionRate_CUDA(
+productionRate_CUDAReg(
   volatile amrex::Real* wdot,
   volatile const amrex::Real* sc,
   const amrex::Real T)
@@ -5655,7 +5656,7 @@ productionRate_CUDA(
 
 //  get temperature given internal energy in mass units and mass fracs
 __device__ __forceinline__ void
-GET_T_GIVEN_EY_CUDA(
+GET_T_GIVEN_EY_CUDAReg(
   const amrex::Real e,
   volatile const amrex::Real y[],
   amrex::Real& t,
@@ -5671,18 +5672,18 @@ GET_T_GIVEN_EY_CUDA(
   amrex::Real tmin = 90;   // max lower bound for thermo def
   amrex::Real tmax = 4000; // min upper bound for thermo def
   amrex::Real e1, emin, emax, cv, t1, dt;
-  CKUBMS_CUDA(tmin, y, emin);
-  CKUBMS_CUDA(tmax, y, emax);
+  CKUBMS_CUDAReg(tmin, y, emin);
+  CKUBMS_CUDAReg(tmax, y, emax);
   if (e < emin) {
     // Linear Extrapolation below tmin
-    CKCVBS_CUDA(tmin, y, cv);
+    CKCVBS_CUDAReg(tmin, y, cv);
     t = tmin - (emin - e) / cv;
     ierr = 1;
     return;
   }
   if (e > emax) {
     // Linear Extrapolation above tmax
-    CKCVBS_CUDA(tmax, y, cv);
+    CKCVBS_CUDAReg(tmax, y, cv);
     t = tmax - (emax - e) / cv;
     ierr = 1;
     return;
@@ -5692,8 +5693,8 @@ GET_T_GIVEN_EY_CUDA(
     t1 = tmin + (tmax - tmin) / (emax - emin) * (e - emin);
   }
   for (int i = 0; i < maxiter; ++i) {
-    CKUBMS_CUDA(t1, y, e1);
-    CKCVBS_CUDA(t1, y, cv);
+    CKUBMS_CUDAReg(t1, y, e1);
+    CKCVBS_CUDAReg(t1, y, cv);
     dt = (e - e1) / cv;
     if (dt > 100.) {
       dt = 100.;
@@ -5710,10 +5711,10 @@ GET_T_GIVEN_EY_CUDA(
 
 // Returns internal energy in mass units (Eq 30.)
 __device__ __forceinline__ void
-CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[])
+CKUMS_CUDAReg(const amrex::Real T, volatile amrex::Real ums[])
 {
   if (threadIdx.x == 0) {
-    speciesInternalEnergy_CUDA(ums, T);
+    speciesInternalEnergy_CUDAReg(ums, T);
   }
   __syncthreads();
 
@@ -5724,7 +5725,7 @@ CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[])
 
 // convert y[species] (mass fracs) to c[species] (molar conc)
 __device__ __forceinline__ void
-CKYTCR_CUDA(
+CKYTCR_CUDAReg(
   const amrex::Real rho,
   amrex::Real /*T*/,
   volatile const amrex::Real y[],
@@ -5737,7 +5738,7 @@ CKYTCR_CUDA(
 
 // compute the production rate for each species
 __device__ __forceinline__ void
-CKWC_CUDA(
+CKWC_CUDAReg(
   const amrex::Real T, volatile amrex::Real C[], volatile amrex::Real wdot[])
 {
   // convert to SI
@@ -5745,7 +5746,7 @@ CKWC_CUDA(
   __syncthreads();
 
   if (threadIdx.x == 0) {
-    productionRate_CUDA(wdot, C, T);
+    productionRate_CUDAReg(wdot, C, T);
   }
   __syncthreads();
 

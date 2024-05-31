@@ -360,6 +360,95 @@ public:
 
 template <typename OrderType>
 __global__ void
+fKernelSpec_CUDAReg(
+  const int ncells,
+  const amrex::Real dt_save,
+  const amrex::Real* yvec_d,
+  amrex::Real* ydot_d, // NOLINT(readability-non-const-parameter)
+  const amrex::Real* rhoe_init,
+  const amrex::Real* rhoesrc_ext,
+  const amrex::Real* rYs)
+{
+  if (blockIdx.x < ncells) {
+
+    __shared__ volatile amrex::Real massfrac[NUM_SPECIES];
+    __shared__ volatile amrex::Real ei_pt[NUM_SPECIES];
+    __shared__ volatile amrex::Real cdots_pt[NUM_SPECIES];
+    __shared__ volatile amrex::Real scratch[64];
+
+    scratch[threadIdx.x] = 0.0;
+
+    if (threadIdx.x < NUM_SPECIES) {
+      massfrac[threadIdx.x] =
+        yvec_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
+      scratch[threadIdx.x] = massfrac[threadIdx.x];
+    }
+    __syncthreads();
+
+    // Hard coded for warp sizes of 32
+    if (threadIdx.x < 32) {
+      scratch[threadIdx.x] += scratch[threadIdx.x + 32];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 16];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 8];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 4];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 2];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 1];
+    }
+    __syncthreads(); // not required if rho_pt assignment was happening in
+                     // shared memory by threadIdx.x == 0
+
+    // this "should" be a broadcast
+    const amrex::Real rho_pt = scratch[0];
+    const amrex::Real rho_pt_inv = 1.0 / rho_pt;
+
+    massfrac[threadIdx.x] *= rho_pt_inv;
+    __syncthreads(); // before next usage of massfrac
+
+    const amrex::Real nrg_pt =
+      (rhoe_init[blockIdx.x] + rhoesrc_ext[blockIdx.x] * dt_save) * rho_pt_inv;
+
+    amrex::Real temp_pt =
+      yvec_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)];
+
+    amrex::Real Cv_pt = 0.0;
+    auto eos = pele::physics::PhysicsType::eos();
+    if (threadIdx.x == 0) {
+      eos.REY2T_CUDAReg(rho_pt, nrg_pt, massfrac, temp_pt);
+      eos.RTY2Cv_CUDAReg(rho_pt, temp_pt, massfrac, Cv_pt);
+    }
+    __syncthreads();
+
+    eos.RTY2Ei_CUDAReg(rho_pt, temp_pt, massfrac, ei_pt);
+    eos.RTY2WDOT_CUDAReg(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
+
+    if (threadIdx.x < NUM_SPECIES) {
+      scratch[threadIdx.x] =
+        cdots_pt[threadIdx.x] +
+        rYs[spec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
+      ydot_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)] =
+        scratch[threadIdx.x];
+      scratch[threadIdx.x] *= ei_pt[threadIdx.x];
+    }
+    __syncthreads();
+
+    if (threadIdx.x < 32) {
+      scratch[threadIdx.x] += scratch[threadIdx.x + 32];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 16];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 8];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 4];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 2];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 1];
+    }
+
+    if (threadIdx.x == 0) {
+      ydot_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)] =
+        (rhoesrc_ext[blockIdx.x] - scratch[0]) * (rho_pt_inv / Cv_pt);
+    }
+  }
+}
+
+template <typename OrderType>
+__global__ void
 fKernelSpecOpt_CUDA(
   const int ncells,
   const amrex::Real dt_save,
@@ -417,7 +506,7 @@ fKernelSpecOpt_CUDA(
       eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac, Cv_pt);
     }
     __syncthreads();
-    
+
     eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac, ei_pt);
     eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
 
@@ -458,8 +547,9 @@ fKernelSpecBase_CUDA(
   const amrex::Real* rhoesrc_ext,
   const amrex::Real* rYs)
 {
-  const int tidx =  blockDim.x*blockIdx.x + threadIdx.x; // thread index
-  if (tidx >= ncells) return;
+  const int tidx = blockDim.x * blockIdx.x + threadIdx.x; // thread index
+  if (tidx >= ncells)
+    return;
 
   amrex::Real rho_pt = 0.0;
   amrex::GpuArray<amrex::Real, NUM_SPECIES> massfrac = {0.0};
@@ -476,8 +566,7 @@ fKernelSpecBase_CUDA(
   const amrex::Real nrg_pt =
     (rhoe_init[tidx] + rhoesrc_ext[tidx] * dt_save) * rho_pt_inv;
 
-  amrex::Real temp_pt =
-    yvec_d[vec_index<OrderType>(NUM_SPECIES, tidx, ncells)];
+  amrex::Real temp_pt = yvec_d[vec_index<OrderType>(NUM_SPECIES, tidx, ncells)];
 
   amrex::Real Cv_pt = 0.0;
   amrex::GpuArray<amrex::Real, NUM_SPECIES> ei_pt = {0.0};

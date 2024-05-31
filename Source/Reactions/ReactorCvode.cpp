@@ -1737,49 +1737,67 @@ ReactorCvode::cF_RHS(
 
   /////////////////////////////////////////////////////////////////////
 
-  const int block_size = 32;
-  utils::fKernelSpecBase_CUDA<Ordering><<<
-    (ncells + block_size - 1) / block_size, block_size>>>(
-    ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
-  cudaDeviceSynchronize();
-  
-  ///////////////////////////////////////////////////////////////////////
-
-  const int nthreads_per_block = 64; // multiple of warpSize rounded up,
-                                      // based on number of species
-  dim3 block(nthreads_per_block);
-  dim3 grid(ncells); // 1 cell is assigned 1 block - could be inefficent for
-                     // chemsitry model with less number of species
-  utils::fKernelSpecOpt_CUDA<Ordering><<<grid, block>>>(
-    ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext, rYsrc_ext);
-  amrex::Gpu::Device::synchronize();
-
-  ///////////////////////////////////////////////////////////////////////
-
-  // N_VCopyFromDevice_Cuda(ydot_in);
-  // N_VCopyFromDevice_Cuda(ydot_d_opt);
-  // amrex::Real* ydot_h_base = N_VGetHostArrayPointer_Cuda(ydot_in);
-  // amrex::Real* ydot_h_opt = N_VGetHostArrayPointer_Cuda(ydot_d_opt);
-
-  // amrex::Real base = 0.0;
-  // amrex::Real opt = 0.0;
-  // amrex::Real diff = 0.0;
-  // amrex::Real tol = 1e-3;
-  // for (int i = 0; i < ncells; i++) {
-  //   for (int n = 0; n < (NUM_SPECIES + 1); n++) {
-  //     base = ydot_h_base[utils::vec_index<Ordering>(n, i, ncells)];
-  //     opt = ydot_h_opt[utils::vec_index<Ordering>(n, i, ncells)];
-  //     diff = base - opt;
-
-  //     if ((std::abs(diff) > tol) && (std::abs(diff / base) > tol)) {
-  //       printf(
-  //         "Base: %16.16f, Opt: %16.16f, Abs Diff: %16.16f, Rel Diff: %16.16f, "
-  //         "for cell %d, for species %d \n",
-  //         base, opt, std::abs(diff), std::abs(diff / base), i, n);
-  //       amrex::Abort("Someone messed up the computations.");
-  //     }
-  //   }
+  // {
+  //   const int block_size = 256;
+  //   utils::fKernelSpecBase_CUDA<Ordering>
+  //     <<<(ncells + block_size - 1) / block_size, block_size>>>(
+  //       ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
   // }
+  // cudaDeviceSynchronize();
+
+  /////////////////////////////////////////////////////////////////////
+
+  {
+    const int nthreads_per_block = 64; // multiple of warpSize rounded up,
+                                       // based on number of species
+    dim3 block(nthreads_per_block);
+    dim3 grid(ncells); // 1 cell is assigned 1 block - could be inefficent
+                       // chemsitry model with less number of species
+    utils::fKernelSpec_CUDAReg<Ordering><<<grid, block>>>(
+      ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
+  }
+  cudaDeviceSynchronize();
+
+  ///////////////////////////////////////////////////////////////////////
+
+  {
+    const int nthreads_per_block = 64; // multiple of warpSize rounded up,
+                                       // based on number of species
+    dim3 block(nthreads_per_block);
+    dim3 grid(ncells); // 1 cell is assigned 1 block - could be inefficent for
+                       // chemsitry model with less number of species
+    utils::fKernelSpecOpt_CUDA<Ordering><<<grid, block>>>(
+      ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext,
+      rYsrc_ext);
+  }
+  cudaDeviceSynchronize();
+
+  ///////////////////////////////////////////////////////////////////////
+
+  N_VCopyFromDevice_Cuda(ydot_in);
+  N_VCopyFromDevice_Cuda(ydot_d_opt);
+  amrex::Real* ydot_h_base = N_VGetHostArrayPointer_Cuda(ydot_in);
+  amrex::Real* ydot_h_opt = N_VGetHostArrayPointer_Cuda(ydot_d_opt);
+
+  amrex::Real base = 0.0;
+  amrex::Real opt = 0.0;
+  amrex::Real diff = 0.0;
+  amrex::Real tol = 1e-16;
+  for (int i = 0; i < ncells; i++) {
+    for (int n = 0; n < (NUM_SPECIES + 1); n++) {
+      base = ydot_h_base[utils::vec_index<Ordering>(n, i, ncells)];
+      opt = ydot_h_opt[utils::vec_index<Ordering>(n, i, ncells)];
+      diff = base - opt;
+
+      if ((std::abs(diff) > tol) && (std::abs(diff / base) > tol)) {
+        printf(
+          "Base: %16.16f, Opt: %16.16f, Abs Diff: %16.16f, Rel Diff: %16.16f, "
+          "for cell %d, for species %d \n",
+          base, opt, std::abs(diff), std::abs(diff / base), i, n);
+        amrex::Abort("Someone messed up the computations.");
+      }
+    }
+  }
   N_VDestroy(ydot_d_opt);
 
   return 0;
