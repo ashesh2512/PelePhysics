@@ -5711,7 +5711,7 @@ GET_T_GIVEN_EY_CUDA(
 
 // Returns internal energy in mass units (Eq 30.)
 __device__ __forceinline__ void
-CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[])
+CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[NUM_SPECIES])
 {
   if (threadIdx.x == 0) {
     speciesInternalEnergy_CUDA(ums, T);
@@ -5728,8 +5728,8 @@ __device__ __forceinline__ void
 CKYTCR_CUDA(
   const amrex::Real rho,
   amrex::Real /*T*/,
-  volatile const amrex::Real y[],
-  volatile amrex::Real c[])
+  volatile const amrex::Real y[NUM_SPECIES],
+  volatile amrex::Real c[64])
 {
   for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
     c[i] = rho * y[i] * imw(i);
@@ -5739,7 +5739,7 @@ CKYTCR_CUDA(
 // compute the production rate for each species
 __device__ __forceinline__ void
 CKWC_CUDA(
-  const amrex::Real T, volatile amrex::Real C[], volatile amrex::Real wdot[])
+  const amrex::Real T, volatile amrex::Real C[64], volatile amrex::Real wdot[NUM_SPECIES])
 {
   // convert to SI
   for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
