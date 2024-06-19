@@ -405,7 +405,9 @@ fKernelSpec_CUDAReg(
       printf("scratch[0] before: %16.16f \n", scratch[0]);
     }
 
-    massfrac[threadIdx.x] *= rho_pt_inv;
+    if (threadIdx.x < NUM_SPECIES) {
+      massfrac[threadIdx.x] *= rho_pt_inv;
+    }
     __syncthreads(); // before next usage of massfrac
 
     if(threadIdx.x==0 && blockIdx.x==1) {
@@ -509,8 +511,10 @@ fKernelSpecOpt_CUDA(
     if(lcl_cell_thread_idx==0 && glb_cell_idx==1) {
       printf("scratch[lcl_cell_idx][0] before: %16.16f \n", scratch[lcl_cell_idx][0]);
     }
-
-    massfrac[lcl_cell_idx][lcl_cell_thread_idx] *= rho_pt_inv;
+    
+    if (lcl_cell_thread_idx < NUM_SPECIES) {
+      massfrac[lcl_cell_idx][lcl_cell_thread_idx] *= rho_pt_inv;
+    }
     __syncthreads(); // before next usage of massfrac
 
     if(lcl_cell_thread_idx==0 && glb_cell_idx==1) {
