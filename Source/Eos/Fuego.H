@@ -278,7 +278,7 @@ struct Fuego
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real WDOT[NUM_SPECIES],
-    volatile amrex::Real scratch[NUM_SPECIES])
+    volatile amrex::Real scratch[64])
   {
     CKYTCR_CUDAReg(R, T, Y, scratch);
     CKWC_CUDAReg(T, scratch, WDOT);
@@ -293,7 +293,7 @@ struct Fuego
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real WDOT[NUM_SPECIES],
-    volatile amrex::Real scratch[NUM_SPECIES])
+    volatile amrex::Real scratch[64])
   {
     CKYTCR_CUDA(R, T, Y, scratch);
     CKWC_CUDA(T, scratch, WDOT);

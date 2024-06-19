@@ -401,7 +401,9 @@ fKernelSpec_CUDAReg(
     const amrex::Real rho_pt = scratch[0];
     const amrex::Real rho_pt_inv = 1.0 / rho_pt;
 
-    massfrac[threadIdx.x] *= rho_pt_inv;
+    if (threadIdx.x < NUM_SPECIES) {
+      massfrac[threadIdx.x] *= rho_pt_inv;
+    }
     __syncthreads(); // before next usage of massfrac
 
     const amrex::Real nrg_pt =
@@ -490,7 +492,9 @@ fKernelSpecOpt_CUDA(
     const amrex::Real rho_pt = scratch[0];
     const amrex::Real rho_pt_inv = 1.0 / rho_pt;
 
-    massfrac[threadIdx.x] *= rho_pt_inv;
+    if (threadIdx.x < NUM_SPECIES) {
+      massfrac[threadIdx.x] *= rho_pt_inv;
+    }
     __syncthreads(); // before next usage of massfrac
 
     const amrex::Real nrg_pt =
