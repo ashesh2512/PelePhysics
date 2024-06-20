@@ -1701,9 +1701,6 @@ ReactorCvode::cF_RHS(
   amrex::Real* yvec_d = N_VGetDeviceArrayPointer(y_in);
   amrex::Real* ydot_d = N_VGetDeviceArrayPointer(ydot_in);
 
-  N_Vector ydot_d_test = N_VClone(ydot_in);
-  amrex::Real* ydot_d_test_ptr = N_VGetDeviceArrayPointer(ydot_d_test);
-
   N_Vector ydot_d_opt = N_VClone(ydot_in);
   amrex::Real* ydot_d_opt_ptr = N_VGetDeviceArrayPointer(ydot_d_opt);
 #else
@@ -1740,13 +1737,13 @@ ReactorCvode::cF_RHS(
 
   /////////////////////////////////////////////////////////////////////
 
-  {
-    const int block_size = 256;
-    utils::fKernelSpecBase_CUDA<Ordering>
-      <<<(ncells + block_size - 1) / block_size, block_size>>>(
-        ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
-  }
-  cudaDeviceSynchronize();
+  // {
+  //   const int block_size = 256;
+  //   utils::fKernelSpecBase_CUDA<Ordering>
+  //     <<<(ncells + block_size - 1) / block_size, block_size>>>(
+  //       ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
+  // }
+  // cudaDeviceSynchronize();
 
   /////////////////////////////////////////////////////////////////////
 
@@ -1757,14 +1754,14 @@ ReactorCvode::cF_RHS(
     dim3 grid(ncells); // 1 cell is assigned 1 block - could be inefficent
                        // chemsitry model with less number of species
     utils::fKernelSpec_CUDAReg<Ordering><<<grid, block>>>(
-      ncells, dt_save, yvec_d, ydot_d_test_ptr, rhoe_init, rhoesrc_ext, rYsrc_ext);
+      ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
   }
   cudaDeviceSynchronize();
 
   ///////////////////////////////////////////////////////////////////////
 
   {
-    const int num_cells_per_block = 2;
+    const int num_cells_per_block = 3;
     const int nthreads_per_block = 64*num_cells_per_block; // multiple of warpSize rounded up,
                                         // based on number of species
     dim3 block(nthreads_per_block);
@@ -1776,15 +1773,15 @@ ReactorCvode::cF_RHS(
 
   ///////////////////////////////////////////////////////////////////////
 
-  N_VCopyFromDevice_Cuda(ydot_d_test);
+  N_VCopyFromDevice_Cuda(ydot_in);
   N_VCopyFromDevice_Cuda(ydot_d_opt);
-  amrex::Real* ydot_h_base = N_VGetHostArrayPointer_Cuda(ydot_d_test);
+  amrex::Real* ydot_h_base = N_VGetHostArrayPointer_Cuda(ydot_in);
   amrex::Real* ydot_h_opt = N_VGetHostArrayPointer_Cuda(ydot_d_opt);
 
   amrex::Real base = 0.0;
   amrex::Real opt = 0.0;
   amrex::Real diff = 0.0;
-  amrex::Real tol = 1e-1;
+  amrex::Real tol = 1e-15;
   for (int i = 0; i < ncells; i++) {
     for (int n = 0; n < (NUM_SPECIES + 1); n++) {
       base = ydot_h_base[utils::vec_index<Ordering>(n, i, ncells)];
@@ -1800,7 +1797,6 @@ ReactorCvode::cF_RHS(
       }
     }
   }
-  N_VDestroy(ydot_d_test);
   N_VDestroy(ydot_d_opt);
 
   return 0;

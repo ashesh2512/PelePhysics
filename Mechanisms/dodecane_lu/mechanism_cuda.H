@@ -5691,9 +5691,7 @@ GET_T_GIVEN_EY_CUDA(
   if (t1 < tmin || t1 > tmax) {
     t1 = tmin + (tmax - tmin) / (emax - emin) * (e - emin);
   }
-  int count = 0;
   for (int i = 0; i < maxiter; ++i) {
-    count = count + 1;
     CKUBMS_CUDA(t1, y, e1);
     CKCVBS_CUDA(t1, y, cv);
     dt = (e - e1) / cv;
@@ -5706,7 +5704,6 @@ GET_T_GIVEN_EY_CUDA(
     }
     t1 += dt;
   }
-  printf("Opt Count: %d \n", count);
   t = t1;
   ierr = 0;
 }
@@ -5745,8 +5742,8 @@ CKWC_CUDA(
   const amrex::Real T, volatile amrex::Real C[64], volatile amrex::Real wdot[NUM_SPECIES], const int tidx)
 {
   // convert to SI
-  if (threadIdx.x < NUM_SPECIES) {
-    C[threadIdx.x] *= 1.0e6;
+  if (tidx < NUM_SPECIES) {
+    C[tidx] *= 1.0e6;
   }
   __syncthreads();
 
@@ -5756,7 +5753,7 @@ CKWC_CUDA(
   __syncthreads();
 
   // convert to chemkin units
-  if (threadIdx.x < NUM_SPECIES) {
+  if (tidx < NUM_SPECIES) {
     C[tidx] *= 1.0e-6;
     wdot[tidx] *= 1.0e-6;
   }

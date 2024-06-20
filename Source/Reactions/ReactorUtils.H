@@ -401,62 +401,52 @@ fKernelSpec_CUDAReg(
     amrex::Real rho_pt = scratch[0];
     amrex::Real rho_pt_inv = 1.0 / rho_pt;
 
-    if(threadIdx.x==0 && blockIdx.x==1) {
-      printf("scratch[0] before: %16.16f \n", scratch[0]);
-    }
-
     if (threadIdx.x < NUM_SPECIES) {
       massfrac[threadIdx.x] *= rho_pt_inv;
     }
     __syncthreads(); // before next usage of massfrac
 
-    if(threadIdx.x==0 && blockIdx.x==1) {
-      printf("scratch[0] after: %16.16f \n", scratch[0]);
-      printf("rho_pt_inv after: %16.16f \n", rho_pt);
+    const amrex::Real nrg_pt =
+      (rhoe_init[blockIdx.x] + rhoesrc_ext[blockIdx.x] * dt_save) * rho_pt_inv;
+
+    amrex::Real temp_pt =
+      yvec_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)];
+
+    amrex::Real Cv_pt = 0.0;
+    auto eos = pele::physics::PhysicsType::eos();
+    if (threadIdx.x == 0) {
+      eos.REY2T_CUDAReg(rho_pt, nrg_pt, massfrac, temp_pt);
+      eos.RTY2Cv_CUDAReg(rho_pt, temp_pt, massfrac, Cv_pt);
     }
+    __syncthreads();
 
-    // const amrex::Real nrg_pt =
-    //   (rhoe_init[blockIdx.x] + rhoesrc_ext[blockIdx.x] * dt_save) * rho_pt_inv;
-
-    // amrex::Real temp_pt =
-    //   yvec_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)];
-
-    // amrex::Real Cv_pt = 0.0;
-    // auto eos = pele::physics::PhysicsType::eos();
-    // if (threadIdx.x == 0) {
-      // eos.REY2T_CUDAReg(rho_pt, nrg_pt, massfrac, temp_pt);
-      // eos.RTY2Cv_CUDAReg(rho_pt, temp_pt, massfrac, Cv_pt);
-    // }
-    // __syncthreads();
-
-    // eos.RTY2Ei_CUDAReg(rho_pt, temp_pt, massfrac, ei_pt);
-    // eos.RTY2WDOT_CUDAReg(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
+    eos.RTY2Ei_CUDAReg(rho_pt, temp_pt, massfrac, ei_pt);
+    eos.RTY2WDOT_CUDAReg(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
 
     if (threadIdx.x < NUM_SPECIES) {
-      // scratch[threadIdx.x] =
-      //   cdots_pt[threadIdx.x] +
-      //   rYs[spec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
+      scratch[threadIdx.x] =
+        cdots_pt[threadIdx.x] +
+        rYs[spec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
 
       ydot_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)] =
         scratch[threadIdx.x];
 
-      // scratch[threadIdx.x] *= ei_pt[threadIdx.x];
+      scratch[threadIdx.x] *= ei_pt[threadIdx.x];
     }
     __syncthreads();
 
-    // if (threadIdx.x < 32) {
-    //   scratch[threadIdx.x] += scratch[threadIdx.x + 32];
-    //   scratch[threadIdx.x] += scratch[threadIdx.x + 16];
-    //   scratch[threadIdx.x] += scratch[threadIdx.x + 8];
-    //   scratch[threadIdx.x] += scratch[threadIdx.x + 4];
-    //   scratch[threadIdx.x] += scratch[threadIdx.x + 2];
-    //   scratch[threadIdx.x] += scratch[threadIdx.x + 1];
-    // }
+    if (threadIdx.x < 32) {
+      scratch[threadIdx.x] += scratch[threadIdx.x + 32];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 16];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 8];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 4];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 2];
+      scratch[threadIdx.x] += scratch[threadIdx.x + 1];
+    }
 
     if (threadIdx.x == 0) {
-      // ydot_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)] =
-      //   (rhoesrc_ext[blockIdx.x] - scratch[0]) * (rho_pt_inv / Cv_pt);
-      ydot_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)] = 1.0;
+      ydot_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)] =
+        (rhoesrc_ext[blockIdx.x] - scratch[0]) * (rho_pt_inv / Cv_pt);
     }
   }
 }
@@ -472,7 +462,7 @@ fKernelSpecOpt_CUDA(
   const amrex::Real* rhoesrc_ext,
   const amrex::Real* rYs)
 {
-  const int num_cells_per_block = 2;
+  const int num_cells_per_block = 3;
   const int lcl_cell_idx = threadIdx.x / 64;
   const int glb_cell_idx = blockIdx.x * num_cells_per_block + lcl_cell_idx;
   const int lcl_cell_thread_idx = threadIdx.x % 64;
@@ -507,63 +497,54 @@ fKernelSpecOpt_CUDA(
     // this "should" be a broadcast
     amrex::Real rho_pt = scratch[lcl_cell_idx][0];
     amrex::Real rho_pt_inv = 1.0 / rho_pt;
-
-    if(lcl_cell_thread_idx==0 && glb_cell_idx==1) {
-      printf("scratch[lcl_cell_idx][0] before: %16.16f \n", scratch[lcl_cell_idx][0]);
-    }
     
     if (lcl_cell_thread_idx < NUM_SPECIES) {
       massfrac[lcl_cell_idx][lcl_cell_thread_idx] *= rho_pt_inv;
     }
     __syncthreads(); // before next usage of massfrac
 
-    if(lcl_cell_thread_idx==0 && glb_cell_idx==1) {
-      printf("scratch[lcl_cell_idx][0] after: %16.16f \n", scratch[lcl_cell_idx][0]);
-      printf("rho_pt_inv after: %16.16f \n", rho_pt);
+    const amrex::Real nrg_pt =
+      (rhoe_init[glb_cell_idx] + rhoesrc_ext[glb_cell_idx] * dt_save) * rho_pt_inv;
+
+    amrex::Real temp_pt =
+      yvec_d[vec_index<OrderType>(NUM_SPECIES, glb_cell_idx, ncells)];
+
+    amrex::Real Cv_pt = 0.0;
+    auto eos = pele::physics::PhysicsType::eos();
+    if (lcl_cell_thread_idx == 0) {
+      eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac[lcl_cell_idx], temp_pt);
+      eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], Cv_pt);
     }
-    // const amrex::Real nrg_pt =
-    //   (rhoe_init[glb_cell_idx] + rhoesrc_ext[glb_cell_idx] * dt_save) * rho_pt_inv;
-
-    // amrex::Real temp_pt =
-    //   yvec_d[vec_index<OrderType>(NUM_SPECIES, glb_cell_idx, ncells)];
-
-    // amrex::Real Cv_pt = 0.0;
-    // auto eos = pele::physics::PhysicsType::eos();
-    // if (lcl_cell_thread_idx == 0) {
-    //   eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac[lcl_cell_idx], temp_pt);
-    //   eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], Cv_pt);
-    // }
-    // __syncthreads();
+    __syncthreads();
     
-  //   // eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx], lcl_cell_thread_idx);
-  //   // eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx], lcl_cell_thread_idx);
+    eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx], lcl_cell_thread_idx);
+    eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx], lcl_cell_thread_idx);
 
     if (lcl_cell_thread_idx < NUM_SPECIES) {
-      // scratch[lcl_cell_idx][lcl_cell_thread_idx] =
-      //   cdots_pt[lcl_cell_idx][lcl_cell_thread_idx] +
-      //   rYs[spec_index<OrderType>(lcl_cell_thread_idx, glb_cell_idx, ncells)];
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] =
+        cdots_pt[lcl_cell_idx][lcl_cell_thread_idx] +
+        rYs[spec_index<OrderType>(lcl_cell_thread_idx, glb_cell_idx, ncells)];
 
       ydot_d[vec_index<OrderType>(lcl_cell_thread_idx, glb_cell_idx, ncells)] =
         scratch[lcl_cell_idx][lcl_cell_thread_idx];
 
-      // scratch[lcl_cell_idx][lcl_cell_thread_idx] *=
-      //   ei_pt[lcl_cell_idx][lcl_cell_thread_idx];
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] *=
+        ei_pt[lcl_cell_idx][lcl_cell_thread_idx];
     }
     __syncthreads();
 
-    // if (lcl_cell_thread_idx < 32) {
-    //   scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 32];
-    //   scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 16];
-    //   scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 8];
-    //   scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 4];
-    //   scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 2];
-    //   scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 1];
-    // }
+    if (lcl_cell_thread_idx < 32) {
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 32];
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 16];
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 8];
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 4];
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 2];
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 1];
+    }
 
     if (lcl_cell_thread_idx == 0) {
-      // ydot_d[vec_index<OrderType>(NUM_SPECIES, glb_cell_idx, ncells)] =
-      //   (rhoesrc_ext[glb_cell_idx] - scratch[lcl_cell_idx][0]) * (rho_pt_inv / Cv_pt);
-      ydot_d[vec_index<OrderType>(NUM_SPECIES, glb_cell_idx, ncells)] = 1.0;
+      ydot_d[vec_index<OrderType>(NUM_SPECIES, glb_cell_idx, ncells)] =
+        (rhoesrc_ext[glb_cell_idx] - scratch[lcl_cell_idx][0]) * (rho_pt_inv / Cv_pt);
     }
   }
 }
@@ -593,10 +574,6 @@ fKernelSpecBase_CUDA(
 
   for (int n = 0; n < NUM_SPECIES; n++) {
     massfrac[n] *= rho_pt_inv;
-  }
-
-  if(tidx==1) {
-    printf("rho_pt_inv after: %16.16f \n", rho_pt);
   }
 
   const amrex::Real nrg_pt =
