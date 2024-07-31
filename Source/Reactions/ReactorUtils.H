@@ -507,14 +507,13 @@ fKernelSpecOpt_CUDA(
 
     amrex::Real Cv_pt = 0.0;
     auto eos = pele::physics::PhysicsType::eos();
-    if (lcl_cell_thread_idx == 0) {
-      eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac[lcl_cell_idx], temp_pt);
-      eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], Cv_pt);
-    }
+
+    eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac[lcl_cell_idx], scratch[lcl_cell_idx], temp_pt, lcl_cell_thread_idx);
     __syncwarp();
 
+    eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], scratch[lcl_cell_idx], Cv_pt, lcl_cell_thread_idx);
     eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx], lcl_cell_thread_idx);
-    eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx], lcl_cell_thread_idx);
+    // eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx], lcl_cell_thread_idx);
 
     for (int i = lcl_cell_thread_idx; i < NUM_SPECIES; i += 32) {
       scratch[lcl_cell_idx][i] = cdots_pt[lcl_cell_idx][i] + rYs[spec_index<OrderType>(i, glb_cell_idx, ncells)];

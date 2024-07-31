@@ -59,9 +59,11 @@ struct Fuego
   __device__ __forceinline__ static void TY2Cv_CUDA(
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
-    amrex::Real& Cv)
+    volatile amrex::Real scratch[64],
+    amrex::Real& Cv,
+    const int tidx)
   {
-    CKCVBS_CUDA(T, Y, Cv);
+    CKCVBS_CUDA(T, Y, Cv, scratch, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -85,9 +87,11 @@ struct Fuego
     const amrex::Real /*R*/,
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
-    amrex::Real& Cv)
+    volatile amrex::Real scratch[64],
+    amrex::Real& Cv,
+    const int tidx)
   {
-    TY2Cv_CUDA(T, Y, Cv);
+    TY2Cv_CUDA(T, Y, scratch, Cv, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -159,18 +163,20 @@ struct Fuego
     // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_CUDA
     // In SRK this will be different probably
     int lierr = 0;
-    GET_T_GIVEN_EY_CUDAReg(E, Y, T, lierr);
+     GET_T_GIVEN_EY_CUDAReg(E, Y, T, lierr);
   }
 
   __device__ __forceinline__ static void EY2T_CUDA(
     const amrex::Real E,
     volatile const amrex::Real Y[NUM_SPECIES],
-    amrex::Real& T)
+    volatile amrex::Real scratch[64],
+    amrex::Real& T,
+    const int tidx)
   {
     // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_CUDA
     // In SRK this will be different probably
     int lierr = 0;
-    GET_T_GIVEN_EY_CUDA(E, Y, T, lierr);
+    GET_T_GIVEN_EY_CUDA(E, Y, scratch, T, lierr, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -197,9 +203,11 @@ struct Fuego
     const amrex::Real /*R*/,
     const amrex::Real E,
     volatile const amrex::Real Y[NUM_SPECIES],
-    amrex::Real& T)
+    volatile amrex::Real scratch[64],
+    amrex::Real& T,
+    const int tidx)
   {
-    EY2T_CUDA(E, Y, T);
+    EY2T_CUDA(E, Y, scratch, T, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
