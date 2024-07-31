@@ -460,77 +460,81 @@ fKernelSpecOpt_CUDA(
   const amrex::Real* rhoesrc_ext,
   const amrex::Real* rYs)
 {
+  const int num_cells_per_block = 4;
+  const int lcl_cell_idx = threadIdx.x / 32;
+  const int glb_cell_idx = blockIdx.x * num_cells_per_block + lcl_cell_idx;
+  const int lcl_cell_thread_idx = threadIdx.x % 32;
+
   if (blockIdx.x < ncells) {
 
-    __shared__ volatile amrex::Real massfrac[NUM_SPECIES];
-    __shared__ volatile amrex::Real ei_pt[NUM_SPECIES];
-    __shared__ volatile amrex::Real cdots_pt[NUM_SPECIES];
-    __shared__ volatile amrex::Real scratch[64];
+    __shared__ volatile amrex::Real massfrac[num_cells_per_block][NUM_SPECIES];
+    __shared__ volatile amrex::Real ei_pt[num_cells_per_block][NUM_SPECIES];
+    __shared__ volatile amrex::Real cdots_pt[num_cells_per_block][NUM_SPECIES];
+    __shared__ volatile amrex::Real scratch[num_cells_per_block][64];
 
-    scratch[threadIdx.x] = 0.0;
-    scratch[threadIdx.x+32] = 0.0;
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] = 0.0;
+    scratch[lcl_cell_idx][lcl_cell_thread_idx+32] = 0.0;
 
-    for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
-      massfrac[i] =
-        yvec_d[vec_index<OrderType>(i, blockIdx.x, ncells)];
-      scratch[i] = massfrac[i];
+    for (int i = lcl_cell_thread_idx; i < NUM_SPECIES; i += 32) {
+      massfrac[lcl_cell_idx][i] =
+        yvec_d[vec_index<OrderType>(i, glb_cell_idx, ncells)];
+      scratch[lcl_cell_idx][i] = massfrac[lcl_cell_idx][i];
     }
     __syncwarp();
 
     // Hard coded for warp sizes of 32
-    scratch[threadIdx.x] += scratch[threadIdx.x + 32];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 16];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 8];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 4];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 2];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 1];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 32];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 16];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 8];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 4];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 2];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 1];
 
     // this "should" be a broadcast
-    const amrex::Real rho_pt = scratch[0];
+    const amrex::Real rho_pt = scratch[lcl_cell_idx][0];
     const amrex::Real rho_pt_inv = 1.0 / rho_pt;
 
-    for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
-      massfrac[i] *= rho_pt_inv;
+    for (int i = lcl_cell_thread_idx; i < NUM_SPECIES; i += 32) {
+      massfrac[lcl_cell_idx][i] *= rho_pt_inv;
     }
     __syncwarp();
 
     const amrex::Real nrg_pt =
-      (rhoe_init[blockIdx.x] + rhoesrc_ext[blockIdx.x] * dt_save) * rho_pt_inv;
+      (rhoe_init[glb_cell_idx] + rhoesrc_ext[glb_cell_idx] * dt_save) * rho_pt_inv;
 
     amrex::Real temp_pt =
-      yvec_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)];
+      yvec_d[vec_index<OrderType>(NUM_SPECIES, glb_cell_idx, ncells)];
 
     amrex::Real Cv_pt = 0.0;
     auto eos = pele::physics::PhysicsType::eos();
-    if (threadIdx.x == 0) {
-      eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac, temp_pt);
-      eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac, Cv_pt);
+    if (lcl_cell_thread_idx == 0) {
+      eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac[lcl_cell_idx], temp_pt);
+      eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], Cv_pt);
     }
     __syncwarp();
 
-    eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac, ei_pt);
-    eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
+    eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx], lcl_cell_thread_idx);
+    eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx], lcl_cell_thread_idx);
 
-    for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
-      scratch[i] =
-        cdots_pt[i] +
-        rYs[spec_index<OrderType>(i, blockIdx.x, ncells)];
-      ydot_d[vec_index<OrderType>(i, blockIdx.x, ncells)] =
-        scratch[i];
-      scratch[i] *= ei_pt[i];
+    for (int i = lcl_cell_thread_idx; i < NUM_SPECIES; i += 32) {
+      scratch[lcl_cell_idx][i] = cdots_pt[lcl_cell_idx][i] + rYs[spec_index<OrderType>(i, glb_cell_idx, ncells)];
+
+      ydot_d[vec_index<OrderType>(i, glb_cell_idx, ncells)] = scratch[lcl_cell_idx][i];
+
+      scratch[lcl_cell_idx][i] *= ei_pt[lcl_cell_idx][i];
     }
     __syncwarp();
 
-    scratch[threadIdx.x] += scratch[threadIdx.x + 32];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 16];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 8];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 4];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 2];
-    scratch[threadIdx.x] += scratch[threadIdx.x + 1];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 32];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 16];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 8];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 4];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 2];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 1];
 
-    if (threadIdx.x == 0) {
-      ydot_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)] =
-        (rhoesrc_ext[blockIdx.x] - scratch[0]) * (rho_pt_inv / Cv_pt);
+    if (lcl_cell_thread_idx == 0) {
+      ydot_d[vec_index<OrderType>(NUM_SPECIES, glb_cell_idx, ncells)] =
+        (rhoesrc_ext[glb_cell_idx] - scratch[lcl_cell_idx][0]) * (rho_pt_inv / Cv_pt);
     }
   }
 }

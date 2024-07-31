@@ -5692,7 +5692,9 @@ GET_T_GIVEN_EY_CUDA(
   if (t1 < tmin || t1 > tmax) {
     t1 = tmin + (tmax - tmin) / (emax - emin) * (e - emin);
   }
+  // int count = 0;
   for (int i = 0; i < maxiter; ++i) {
+    // count = count+1;
     CKUBMS_CUDA(t1, y, e1);
     CKCVBS_CUDA(t1, y, cv);
     dt = (e - e1) / cv;
@@ -5705,20 +5707,21 @@ GET_T_GIVEN_EY_CUDA(
     }
     t1 += dt;
   }
+  // printf("Count: %d \n", count);
   t = t1;
   ierr = 0;
 }
 
 // Returns internal energy in mass units (Eq 30.)
 __device__ __forceinline__ void
-CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[NUM_SPECIES])
+CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[NUM_SPECIES], const int tidx)
 {
-  if (threadIdx.x == 0) {
+  if (tidx == 0) {
     speciesInternalEnergy_CUDA(ums, T);
   }
   __syncwarp();
 
-  for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+  for (int i = tidx; i < NUM_SPECIES; i += 32) {
     ums[i] *= 8.31446261815324e+07 * T * imw(i);
   }
 }
@@ -5729,9 +5732,10 @@ CKYTCR_CUDA(
   const amrex::Real rho,
   amrex::Real /*T*/,
   volatile const amrex::Real y[NUM_SPECIES],
-  volatile amrex::Real c[64])
+  volatile amrex::Real c[64],
+  const int tidx)
 {
-  for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+  for (int i = tidx; i < NUM_SPECIES; i += 32) {
     c[i] = rho * y[i] * imw(i);
   }
 }
@@ -5739,21 +5743,21 @@ CKYTCR_CUDA(
 // compute the production rate for each species
 __device__ __forceinline__ void
 CKWC_CUDA(
-  const amrex::Real T, volatile amrex::Real C[64], volatile amrex::Real wdot[NUM_SPECIES])
+  const amrex::Real T, volatile amrex::Real C[64], volatile amrex::Real wdot[NUM_SPECIES], const int tidx)
 {
   // convert to SI
-  for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+  for (int i = tidx; i < NUM_SPECIES; i += 32) {
     C[i] *= 1.0e6;
   }
   __syncwarp();
 
-  if (threadIdx.x == 0) {
+  if (tidx == 0) {
     productionRate_CUDA(wdot, C, T);
   }
   __syncwarp();
 
   // convert to chemkin units
-  for (int i = threadIdx.x; i < NUM_SPECIES; i += 32) {
+  for (int i = tidx; i < NUM_SPECIES; i += 32) {
     C[i] *= 1.0e-6;
     wdot[i] *= 1.0e-6;
   }
