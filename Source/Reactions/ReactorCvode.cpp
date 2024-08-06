@@ -1692,6 +1692,14 @@ ReactorCvode::react(
   return static_cast<int>(nfe);
 }
 
+double random_number(const double lower_bound, const double upper_bound) {
+
+  const long max_rand = 1000000L;
+
+  return lower_bound +
+         (upper_bound - lower_bound) * (random() % max_rand) / max_rand;
+}
+
 int
 ReactorCvode::cF_RHS(
   realtype t, N_Vector y_in, N_Vector ydot_in, void* user_data)
@@ -1758,17 +1766,43 @@ ReactorCvode::cF_RHS(
   ///////////////////////////////////////////////////////////////////////
 
   {
+    amrex::Real* mat_7_h = new amrex::Real[7*NUM_SPECIES]; // allocate space for dummy mat
+    amrex::Real* mat_6_h = new amrex::Real[6*NUM_SPECIES]; // allocate space for dummy mat
+
+    // create random arrays
+    rand();
+    for (int i = 0; i < 7*NUM_SPECIES; i++) {
+      mat_7_h[i] = random_number(1e-15, 10.0);
+    }
+    for (int i = 0; i < 6*NUM_SPECIES; i++) {
+      mat_6_h[i] = random_number(1e-15, 10.0);
+    }
+
+    amrex::Real* mat_7_d; 
+    amrex::Real* mat_6_d;
+    cudaMalloc(&mat_7_d, 7*NUM_SPECIES * sizeof(amrex::Real)); // allocate device space for dummy mat
+    cudaMalloc(&mat_6_d, 6*NUM_SPECIES * sizeof(amrex::Real)); // allocate device space for dummy mat
+
+    cudaMemcpy(mat_7_d, mat_7_h, 7*NUM_SPECIES * sizeof(amrex::Real), cudaMemcpyHostToDevice);
+    cudaMemcpy(mat_6_d, mat_6_h, 6*NUM_SPECIES * sizeof(amrex::Real), cudaMemcpyHostToDevice);
+
     const int num_cells_per_block = 4;
-    const int nthreads_per_block = 32*num_cells_per_block;
-    
+    const int nthreads_per_block = 32 * num_cells_per_block;
+
     dim3 block(nthreads_per_block);
-    dim3 grid((ncells + num_cells_per_block - 1) / num_cells_per_block); // multiple cells assigned 1 block
+    dim3 grid( (ncells + num_cells_per_block - 1) / num_cells_per_block); // multiple cells assigned 1 block
 
     utils::fKernelSpecOpt_CUDA<Ordering><<<grid, block>>>(
       ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext,
-      rYsrc_ext);
+      rYsrc_ext, mat_7_d, mat_6_d, mat_6_d);
+
+    cudaDeviceSynchronize();
+
+    cudaFree(mat_7_d); 
+    cudaFree(mat_6_d);   
+    free(mat_7_h); 
+    free(mat_6_h); 
   }
-  cudaDeviceSynchronize();
 
   ///////////////////////////////////////////////////////////////////////
 

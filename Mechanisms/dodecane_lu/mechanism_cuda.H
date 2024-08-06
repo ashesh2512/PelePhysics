@@ -6,7 +6,12 @@
 // get mean internal energy in mass units
 __device__ __forceinline__ void
 CKUBMS_CUDA(
-  const amrex::Real T, volatile const amrex::Real y[], amrex::Real& ubms, volatile amrex::Real scratch[], const int tidx)
+  const amrex::Real T,
+  volatile const amrex::Real y[],
+  amrex::Real& ubms,
+  volatile amrex::Real scratch[],
+  const int tidx,
+  const amrex::Real ceoffs_CKUBMS[7 * NUM_SPECIES])
 {
   amrex::Real result = 0.0;
   const amrex::Real T2 = T * T;
@@ -15,10 +20,24 @@ CKUBMS_CUDA(
   const amrex::Real invT = 1.0 / T;
 
   for (int i = tidx; i < NUM_SPECIES; i += 32) {
-    scratch[i] = y[i] *
-                (+1.50000000e+00 + 3.52666409e-13 * T - 6.65306547e-16 * T2 +
-                 5.75204080e-19 * T3 - 1.85546466e-22 * T4 + 2.54736599e+04 * invT) *
-                0.9920634920634921;
+
+    const amrex::Real a = ceoffs_CKUBMS[i];
+    const amrex::Real b = ceoffs_CKUBMS[NUM_SPECIES + i];
+    const amrex::Real c = ceoffs_CKUBMS[2 * NUM_SPECIES + i];
+    const amrex::Real d = ceoffs_CKUBMS[3 * NUM_SPECIES + i];
+    const amrex::Real e = ceoffs_CKUBMS[4 * NUM_SPECIES + i];
+    const amrex::Real f = ceoffs_CKUBMS[5 * NUM_SPECIES + i];
+    const amrex::Real g = ceoffs_CKUBMS[6 * NUM_SPECIES + i];
+
+    scratch[i] = y[i] * (a + b * T - c * T2 + d * T3 - e * T4 + f * invT) * g;
+
+    // scratch[i] = y[i] *
+    //              (ceoffs_CKUBMS[7*i] + ceoffs_CKUBMS[7*i + 1] * T -
+    //               ceoffs_CKUBMS[7*i + 2] * T2 +
+    //               ceoffs_CKUBMS[7*i + 3] * T3 -
+    //               ceoffs_CKUBMS[7*i + 4] * T4 +
+    //               ceoffs_CKUBMS[7*i + 5] * invT) *
+    //              ceoffs_CKUBMS[7*i + 6];
   }
   __syncwarp();
 
@@ -38,7 +57,12 @@ CKUBMS_CUDA(
 // Returns the mean specific heat at CV (Eq. 36)
 __device__ __forceinline__ void
 CKCVBS_CUDA(
-  const amrex::Real T, volatile const amrex::Real y[], amrex::Real& cvbs, volatile amrex::Real scratch[], const int tidx)
+  const amrex::Real T,
+  volatile const amrex::Real y[],
+  amrex::Real& cvbs,
+  volatile amrex::Real scratch[],
+  const int tidx,
+  const amrex::Real ceoffs_CKCVBS[6 * NUM_SPECIES])
 {
   amrex::Real result = 0.0;
   // compute Cv/R at the given temperature
@@ -47,10 +71,22 @@ CKCVBS_CUDA(
   const amrex::Real T4 = T * T * T * T;
 
   for (int i = tidx; i < NUM_SPECIES; i += 32) {
-    scratch[i] = y[i] *
-                 (+1.50000000e+00 + 7.05332819e-13 * T - 1.99591964e-15 * T2 +
-                  2.30081632e-18 * T3 - 9.27732332e-22 * T4) *
-                 0.9920634920634921;
+
+    const amrex::Real a = ceoffs_CKCVBS[i];
+    const amrex::Real b = ceoffs_CKCVBS[NUM_SPECIES + i];
+    const amrex::Real c = ceoffs_CKCVBS[2 * NUM_SPECIES + i];
+    const amrex::Real d = ceoffs_CKCVBS[3 * NUM_SPECIES + i];
+    const amrex::Real e = ceoffs_CKCVBS[4 * NUM_SPECIES + i];
+    const amrex::Real f = ceoffs_CKCVBS[5 * NUM_SPECIES + i];
+
+    scratch[i] = y[i] * (a + b * T - c * T2 + d * T3 - e * T4 ) * f;
+
+    // scratch[i] =
+    //   y[i] *
+    //   (ceoffs_CKCVBS[6 * i] + ceoffs_CKCVBS[6 * i + 1] * T -
+    //    ceoffs_CKCVBS[6 * i + 2] * T2 + ceoffs_CKCVBS[6 * i + 3] * T3 -
+    //    ceoffs_CKCVBS[6 * i + 4] * T4) *
+    //   ceoffs_CKCVBS[6 * i + 5];
   }
   __syncwarp();
 
@@ -68,7 +104,10 @@ CKCVBS_CUDA(
 // compute the e/(RT) at the given temperature
 __device__ __forceinline__ void
 speciesInternalEnergy_CUDA(
-  volatile amrex::Real* species, const amrex::Real T, const int tidx)
+  volatile amrex::Real* species,
+  const amrex::Real T,
+  const int tidx,
+  const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES])
 {
   const amrex::Real T2 = T * T;
   const amrex::Real T3 = T * T * T;
@@ -76,9 +115,21 @@ speciesInternalEnergy_CUDA(
   const amrex::Real invT = 1.0 / T;
 
   for (int i = tidx; i < NUM_SPECIES; i += 32) {
-    species[i] = +2.16826710e+00 - 1.63965942e-03 * T + 2.21435465e-06 * T2 -
-                 1.53201656e-09 * T3 + 4.22531942e-13 * T4 +
-                 2.91222592e+04 * invT;
+
+    const amrex::Real a = ceoffs_CKUMS[i];
+    const amrex::Real b = ceoffs_CKUMS[NUM_SPECIES + i];
+    const amrex::Real c = ceoffs_CKUMS[2 * NUM_SPECIES + i];
+    const amrex::Real d = ceoffs_CKUMS[3 * NUM_SPECIES + i];
+    const amrex::Real e = ceoffs_CKUMS[4 * NUM_SPECIES + i];
+    const amrex::Real f = ceoffs_CKUMS[5 * NUM_SPECIES + i];
+
+    species[i] = a - b * T + c * T2 - d * T3 + e * T4 + f * invT;
+
+    // species[i] = ceoffs_CKUMS[6*i] - ceoffs_CKUMS[6*i + 1] * T +
+    //              ceoffs_CKUMS[6*i + 2] * T2 -
+    //              ceoffs_CKUMS[6*i + 3] * T3 +
+    //              ceoffs_CKUMS[6*i + 4] * T4 +
+    //              ceoffs_CKUMS[6*i + 5] * invT;
   }
 }
 
@@ -4035,7 +4086,9 @@ GET_T_GIVEN_EY_CUDA(
   volatile amrex::Real scratch[64],
   amrex::Real& t,
   int& ierr,
-  const int tidx)
+  const int tidx,
+  const amrex::Real ceoffs_CKUBMS[7*NUM_SPECIES], 
+  const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
 {
 #ifdef CONVERGENCE
   const int maxiter = 5000;
@@ -4047,18 +4100,18 @@ GET_T_GIVEN_EY_CUDA(
   amrex::Real tmin = 90;   // max lower bound for thermo def
   amrex::Real tmax = 4000; // min upper bound for thermo def
   amrex::Real e1, emin, emax, cv, t1, dt;
-  CKUBMS_CUDA(tmin, y, emin, scratch, tidx);
-  CKUBMS_CUDA(tmax, y, emax, scratch, tidx);
+  CKUBMS_CUDA(tmin, y, emin, scratch, tidx, ceoffs_CKUBMS);
+  CKUBMS_CUDA(tmax, y, emax, scratch, tidx, ceoffs_CKUBMS);
   if (e < emin) {
     // Linear Extrapolation below tmin
-    CKCVBS_CUDA(tmin, y, cv, scratch, tidx);
+    CKCVBS_CUDA(tmin, y, cv, scratch, tidx, ceoffs_CKCVBS);
     t = tmin - (emin - e) / cv;
     ierr = 1;
     return;
   }
   if (e > emax) {
     // Linear Extrapolation above tmax
-    CKCVBS_CUDA(tmax, y, cv, scratch, tidx);
+    CKCVBS_CUDA(tmax, y, cv, scratch, tidx, ceoffs_CKCVBS);
     t = tmax - (emax - e) / cv;
     ierr = 1;
     return;
@@ -4071,8 +4124,8 @@ GET_T_GIVEN_EY_CUDA(
   // for (int i = 0; i < maxiter; ++i) 
   {
     // count = count+1;
-    CKUBMS_CUDA(t1, y, e1, scratch, tidx);
-    CKCVBS_CUDA(t1, y, cv, scratch, tidx);
+    CKUBMS_CUDA(t1, y, e1, scratch, tidx, ceoffs_CKUBMS);
+    CKCVBS_CUDA(t1, y, cv, scratch, tidx, ceoffs_CKCVBS);
     dt = (e - e1) / cv;
     if (dt > 100.) {
       dt = 100.;
@@ -4090,9 +4143,13 @@ GET_T_GIVEN_EY_CUDA(
 
 // Returns internal energy in mass units (Eq 30.)
 __device__ __forceinline__ void
-CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[NUM_SPECIES], const int tidx)
+CKUMS_CUDA(
+  const amrex::Real T,
+  volatile amrex::Real ums[NUM_SPECIES],
+  const int tidx,
+  const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES])
 {
-  speciesInternalEnergy_CUDA(ums, T, tidx);
+  speciesInternalEnergy_CUDA(ums, T, tidx, ceoffs_CKUMS);
 
   for (int i = tidx; i < NUM_SPECIES; i += 32) {
     ums[i] *= 8.31446261815324e+07 * T * imw(i);

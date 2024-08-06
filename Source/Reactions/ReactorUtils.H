@@ -451,6 +451,7 @@ fKernelSpec_CUDAReg(
 
 template <typename OrderType>
 __global__ void
+__launch_bounds__(1024,1)
 fKernelSpecOpt_CUDA(
   const int ncells,
   const amrex::Real dt_save,
@@ -458,7 +459,10 @@ fKernelSpecOpt_CUDA(
   amrex::Real* ydot_d, // NOLINT(readability-non-const-parameter)
   const amrex::Real* rhoe_init,
   const amrex::Real* rhoesrc_ext,
-  const amrex::Real* rYs)
+  const amrex::Real* rYs,
+  const amrex::Real* ceoffs_CKUBMS,
+  const amrex::Real* ceoffs_CKCVBS,
+  const amrex::Real* ceoffs_CKUMS)
 {
   const int num_cells_per_block = 4;
   const int lcl_cell_idx = threadIdx.x / 32;
@@ -508,12 +512,20 @@ fKernelSpecOpt_CUDA(
     amrex::Real Cv_pt = 0.0;
     auto eos = pele::physics::PhysicsType::eos();
 
-    eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac[lcl_cell_idx], scratch[lcl_cell_idx], temp_pt, lcl_cell_thread_idx);
+    eos.REY2T_CUDA(
+      rho_pt, nrg_pt, massfrac[lcl_cell_idx], scratch[lcl_cell_idx], temp_pt,
+      lcl_cell_thread_idx, ceoffs_CKUBMS, ceoffs_CKCVBS);
     __syncwarp();
 
-    eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], scratch[lcl_cell_idx], Cv_pt, lcl_cell_thread_idx);
-    eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx], lcl_cell_thread_idx);
-    // eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx], lcl_cell_thread_idx);
+    eos.RTY2Cv_CUDA(
+      rho_pt, temp_pt, massfrac[lcl_cell_idx], scratch[lcl_cell_idx], Cv_pt,
+      lcl_cell_thread_idx, ceoffs_CKCVBS);
+    eos.RTY2Ei_CUDA(
+      rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx],
+      lcl_cell_thread_idx, ceoffs_CKUMS);
+    // eos.RTY2WDOT_CUDA(
+    //   rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx],
+    //   scratch[lcl_cell_idx], lcl_cell_thread_idx);
 
     for (int i = lcl_cell_thread_idx; i < NUM_SPECIES; i += 32) {
       scratch[lcl_cell_idx][i] = cdots_pt[lcl_cell_idx][i] + rYs[spec_index<OrderType>(i, glb_cell_idx, ncells)];

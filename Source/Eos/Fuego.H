@@ -61,9 +61,10 @@ struct Fuego
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real scratch[64],
     amrex::Real& Cv,
-    const int tidx)
+    const int tidx,
+    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
   {
-    CKCVBS_CUDA(T, Y, Cv, scratch, tidx);
+    CKCVBS_CUDA(T, Y, Cv, scratch, tidx, ceoffs_CKCVBS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -89,9 +90,10 @@ struct Fuego
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real scratch[64],
     amrex::Real& Cv,
-    const int tidx)
+    const int tidx,
+    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
   {
-    TY2Cv_CUDA(T, Y, scratch, Cv, tidx);
+    TY2Cv_CUDA(T, Y, scratch, Cv, tidx, ceoffs_CKCVBS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -171,12 +173,14 @@ struct Fuego
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real scratch[64],
     amrex::Real& T,
-    const int tidx)
+    const int tidx,
+    const amrex::Real ceoffs_CKUBMS[7*NUM_SPECIES], 
+    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
   {
     // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_CUDA
     // In SRK this will be different probably
     int lierr = 0;
-    GET_T_GIVEN_EY_CUDA(E, Y, scratch, T, lierr, tidx);
+    GET_T_GIVEN_EY_CUDA(E, Y, scratch, T, lierr, tidx, ceoffs_CKUBMS, ceoffs_CKCVBS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -205,9 +209,11 @@ struct Fuego
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real scratch[64],
     amrex::Real& T,
-    const int tidx)
+    const int tidx,
+    const amrex::Real ceoffs_CKUBMS[7*NUM_SPECIES], 
+    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
   {
-    EY2T_CUDA(E, Y, scratch, T, tidx);
+    EY2T_CUDA(E, Y, scratch, T, tidx, ceoffs_CKUBMS, ceoffs_CKCVBS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -365,10 +371,13 @@ struct Fuego
     CKUMS_CUDAReg(T, Ei);
   }
 
-  __device__ __forceinline__ static void
-  T2Ei_CUDA(const amrex::Real T, volatile amrex::Real Ei[NUM_SPECIES], const int tidx)
+  __device__ __forceinline__ static void T2Ei_CUDA(
+    const amrex::Real T,
+    volatile amrex::Real Ei[NUM_SPECIES],
+    const int tidx,
+    const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES])
   {
-    CKUMS_CUDA(T, Ei, tidx);
+    CKUMS_CUDA(T, Ei, tidx, ceoffs_CKUMS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -392,9 +401,10 @@ struct Fuego
     const amrex::Real T,
     volatile const amrex::Real* /*Y[]*/,
     volatile amrex::Real Ei[NUM_SPECIES],
-    const int tidx)
+    const int tidx,
+    const amrex::Real ceoffs_CKUMS[6*NUM_SPECIES])
   {
-    T2Ei_CUDA(T, Ei, tidx);
+    T2Ei_CUDA(T, Ei, tidx, ceoffs_CKUMS);
   }
 
   AMREX_GPU_HOST_DEVICE
