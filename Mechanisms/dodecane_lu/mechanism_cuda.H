@@ -32,6 +32,14 @@ CKUBMS_CUDA(
     scratch[i] = y[i] * (a + b * T - c * T2 + d * T3 - e * T4 + f * invT) * g;
 
     // scratch[i] = y[i] *
+    //              (ceoffs_CKUBMS[i] + ceoffs_CKUBMS[NUM_SPECIES + i] * T -
+    //               ceoffs_CKUBMS[2 * NUM_SPECIES + i] * T2 +
+    //               ceoffs_CKUBMS[3 * NUM_SPECIES + i] * T3 -
+    //               ceoffs_CKUBMS[4 * NUM_SPECIES + i] * T4 +
+    //               ceoffs_CKUBMS[5 * NUM_SPECIES + i] * invT) *
+    //              ceoffs_CKUBMS[6 * NUM_SPECIES + i];
+
+    // scratch[i] = y[i] *
     //              (ceoffs_CKUBMS[7*i] + ceoffs_CKUBMS[7*i + 1] * T -
     //               ceoffs_CKUBMS[7*i + 2] * T2 +
     //               ceoffs_CKUBMS[7*i + 3] * T3 -
@@ -81,6 +89,13 @@ CKCVBS_CUDA(
 
     scratch[i] = y[i] * (a + b * T - c * T2 + d * T3 - e * T4 ) * f;
 
+    // scratch[i] = y[i] *
+    //              (ceoffs_CKCVBS[i] + ceoffs_CKCVBS[NUM_SPECIES + i] * T -
+    //               ceoffs_CKCVBS[2 * NUM_SPECIES + i] * T2 +
+    //               ceoffs_CKCVBS[3 * NUM_SPECIES + i] * T3 -
+    //               ceoffs_CKCVBS[4 * NUM_SPECIES + i] * T4) *
+    //              ceoffs_CKCVBS[5 * NUM_SPECIES + i];
+
     // scratch[i] =
     //   y[i] *
     //   (ceoffs_CKCVBS[6 * i] + ceoffs_CKCVBS[6 * i + 1] * T -
@@ -124,6 +139,12 @@ speciesInternalEnergy_CUDA(
     const amrex::Real f = ceoffs_CKUMS[5 * NUM_SPECIES + i];
 
     species[i] = a - b * T + c * T2 - d * T3 + e * T4 + f * invT;
+
+    // species[i] = ceoffs_CKUMS[i] - ceoffs_CKUMS[NUM_SPECIES + i] * T +
+    //              ceoffs_CKUMS[2 * NUM_SPECIES + i] * T2 -
+    //              ceoffs_CKUMS[3 * NUM_SPECIES + i] * T3 +
+    //              ceoffs_CKUMS[4 * NUM_SPECIES + i] * T4 +
+    //              ceoffs_CKUMS[5 * NUM_SPECIES + i] * invT;
 
     // species[i] = ceoffs_CKUMS[6*i] - ceoffs_CKUMS[6*i + 1] * T +
     //              ceoffs_CKUMS[6*i + 2] * T2 -

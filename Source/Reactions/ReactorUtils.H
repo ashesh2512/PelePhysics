@@ -451,7 +451,7 @@ fKernelSpec_CUDAReg(
 
 template <typename OrderType>
 __global__ void
-__launch_bounds__(1024,1)
+__launch_bounds__(128,8)
 fKernelSpecOpt_CUDA(
   const int ncells,
   const amrex::Real dt_save,
