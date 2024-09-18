@@ -6,7 +6,7 @@
 // get mean internal energy in mass units
 __device__ __forceinline__ void
 CKUBMS_CUDA(
-  const amrex::Real T, volatile const amrex::Real y[], amrex::Real& ubms)
+  const amrex::Real T, const amrex::Real y[], amrex::Real& ubms)
 {
   amrex::Real result = 0.0;
   const amrex::Real T2 = T * T;
@@ -683,7 +683,7 @@ CKUBMS_CUDA(
 // Returns the mean specific heat at CV (Eq. 36)
 __device__ __forceinline__ void
 CKCVBS_CUDA(
-  const amrex::Real T, volatile const amrex::Real y[], amrex::Real& cvbs)
+  const amrex::Real T, const amrex::Real y[], amrex::Real& cvbs)
 {
   amrex::Real result = 0.0;
   // compute Cv/R at the given temperature
@@ -1251,7 +1251,7 @@ CKCVBS_CUDA(
 
 // compute the e/(RT) at the given temperature
 __device__ __forceinline__ void
-speciesInternalEnergy_CUDA(volatile amrex::Real* species, const amrex::Real T)
+speciesInternalEnergy_CUDA(amrex::Real* species, const amrex::Real T)
 {
   const amrex::Real T2 = T * T;
   const amrex::Real T3 = T * T * T;
@@ -1710,7 +1710,7 @@ speciesInternalEnergy_CUDA(volatile amrex::Real* species, const amrex::Real T)
 
 __device__ __forceinline__ void
 productionRate_CUDA(
-  volatile amrex::Real* wdot,
+  amrex::Real* wdot,
   volatile const amrex::Real* sc,
   const amrex::Real T)
 {
@@ -5657,7 +5657,7 @@ productionRate_CUDA(
 __device__ __forceinline__ void
 GET_T_GIVEN_EY_CUDA(
   const amrex::Real e,
-  volatile const amrex::Real y[],
+  const amrex::Real y[],
   amrex::Real& t,
   int& ierr)
 {
@@ -5710,7 +5710,7 @@ GET_T_GIVEN_EY_CUDA(
 
 // Returns internal energy in mass units (Eq 30.)
 __device__ __forceinline__ void
-CKUMS_CUDA(const amrex::Real T, volatile amrex::Real ums[NUM_SPECIES])
+CKUMS_CUDA(const amrex::Real T, amrex::Real ums[NUM_SPECIES])
 {
   if (threadIdx.x == 0) {
     speciesInternalEnergy_CUDA(ums, T);
@@ -5727,7 +5727,7 @@ __device__ __forceinline__ void
 CKYTCR_CUDA(
   const amrex::Real rho,
   amrex::Real /*T*/,
-  volatile const amrex::Real y[NUM_SPECIES],
+  const amrex::Real y[NUM_SPECIES],
   volatile amrex::Real c[64])
 {
   if (threadIdx.x < NUM_SPECIES) {
@@ -5738,7 +5738,7 @@ CKYTCR_CUDA(
 // compute the production rate for each species
 __device__ __forceinline__ void
 CKWC_CUDA(
-  const amrex::Real T, volatile amrex::Real C[64], volatile amrex::Real wdot[NUM_SPECIES])
+  const amrex::Real T, volatile amrex::Real C[64], amrex::Real wdot[NUM_SPECIES])
 {
   // convert to SI
   if (threadIdx.x < NUM_SPECIES) {
@@ -5754,7 +5754,7 @@ CKWC_CUDA(
   // convert to chemkin units
   if (threadIdx.x < NUM_SPECIES) {
     C[threadIdx.x] *= 1.0e-6;
-    wdot[threadIdx.x] *= 1.0e-6;  
+    wdot[threadIdx.x] *= 1.0e-6;
   }
 }
 
