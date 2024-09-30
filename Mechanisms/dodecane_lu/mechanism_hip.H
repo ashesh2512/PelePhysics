@@ -1,12 +1,12 @@
-#ifndef MECHANISM_CUDAREG_H
-#define MECHANISM_CUDAREG_H
+#ifndef MECHANISM_HIP_H
+#define MECHANISM_HIP_H
 
 #include "mechanism.H"
 
 // get mean internal energy in mass units
 __device__ __forceinline__ void
-CKUBMS_CUDAReg(
-  const amrex::Real T, volatile const amrex::Real y[], amrex::Real& ubms)
+CKUBMS_HIP(
+  const amrex::Real T, const amrex::Real y[], amrex::Real& ubms)
 {
   amrex::Real result = 0.0;
   const amrex::Real T2 = T * T;
@@ -682,8 +682,8 @@ CKUBMS_CUDAReg(
 
 // Returns the mean specific heat at CV (Eq. 36)
 __device__ __forceinline__ void
-CKCVBS_CUDAReg(
-  const amrex::Real T, volatile const amrex::Real y[], amrex::Real& cvbs)
+CKCVBS_HIP(
+  const amrex::Real T, const amrex::Real y[], amrex::Real& cvbs)
 {
   amrex::Real result = 0.0;
   // compute Cv/R at the given temperature
@@ -1251,8 +1251,7 @@ CKCVBS_CUDAReg(
 
 // compute the e/(RT) at the given temperature
 __device__ __forceinline__ void
-speciesInternalEnergy_CUDAReg(
-  volatile amrex::Real* species, const amrex::Real T)
+speciesInternalEnergy_HIP(amrex::Real* species, const amrex::Real T)
 {
   const amrex::Real T2 = T * T;
   const amrex::Real T3 = T * T * T;
@@ -1710,8 +1709,8 @@ speciesInternalEnergy_CUDAReg(
 }
 
 __device__ __forceinline__ void
-productionRate_CUDAReg(
-  volatile amrex::Real* wdot,
+productionRate_HIP(
+  amrex::Real* wdot,
   volatile const amrex::Real* sc,
   const amrex::Real T)
 {
@@ -5656,9 +5655,9 @@ productionRate_CUDAReg(
 
 //  get temperature given internal energy in mass units and mass fracs
 __device__ __forceinline__ void
-GET_T_GIVEN_EY_CUDAReg(
+GET_T_GIVEN_EY_HIP(
   const amrex::Real e,
-  volatile const amrex::Real y[],
+  const amrex::Real y[],
   amrex::Real& t,
   int& ierr)
 {
@@ -5672,18 +5671,18 @@ GET_T_GIVEN_EY_CUDAReg(
   amrex::Real tmin = 90;   // max lower bound for thermo def
   amrex::Real tmax = 4000; // min upper bound for thermo def
   amrex::Real e1, emin, emax, cv, t1, dt;
-  CKUBMS_CUDAReg(tmin, y, emin);
-  CKUBMS_CUDAReg(tmax, y, emax);
+  CKUBMS_HIP(tmin, y, emin);
+  CKUBMS_HIP(tmax, y, emax);
   if (e < emin) {
     // Linear Extrapolation below tmin
-    CKCVBS_CUDAReg(tmin, y, cv);
+    CKCVBS_HIP(tmin, y, cv);
     t = tmin - (emin - e) / cv;
     ierr = 1;
     return;
   }
   if (e > emax) {
     // Linear Extrapolation above tmax
-    CKCVBS_CUDAReg(tmax, y, cv);
+    CKCVBS_HIP(tmax, y, cv);
     t = tmax - (emax - e) / cv;
     ierr = 1;
     return;
@@ -5693,8 +5692,8 @@ GET_T_GIVEN_EY_CUDAReg(
     t1 = tmin + (tmax - tmin) / (emax - emin) * (e - emin);
   }
   for (int i = 0; i < maxiter; ++i) {
-    CKUBMS_CUDAReg(t1, y, e1);
-    CKCVBS_CUDAReg(t1, y, cv);
+    CKUBMS_HIP(t1, y, e1);
+    CKCVBS_HIP(t1, y, cv);
     dt = (e - e1) / cv;
     if (dt > 100.) {
       dt = 100.;
@@ -5711,10 +5710,10 @@ GET_T_GIVEN_EY_CUDAReg(
 
 // Returns internal energy in mass units (Eq 30.)
 __device__ __forceinline__ void
-CKUMS_CUDAReg(const amrex::Real T, volatile amrex::Real ums[NUM_SPECIES])
+CKUMS_HIP(const amrex::Real T, amrex::Real ums[NUM_SPECIES])
 {
   if (threadIdx.x == 0) {
-    speciesInternalEnergy_CUDAReg(ums, T);
+    speciesInternalEnergy_HIP(ums, T);
   }
   __syncthreads();
 
@@ -5725,10 +5724,10 @@ CKUMS_CUDAReg(const amrex::Real T, volatile amrex::Real ums[NUM_SPECIES])
 
 // convert y[species] (mass fracs) to c[species] (molar conc)
 __device__ __forceinline__ void
-CKYTCR_CUDAReg(
+CKYTCR_HIP(
   const amrex::Real rho,
   amrex::Real /*T*/,
-  volatile const amrex::Real y[NUM_SPECIES],
+  const amrex::Real y[NUM_SPECIES],
   volatile amrex::Real c[64])
 {
   if (threadIdx.x < NUM_SPECIES) {
@@ -5738,8 +5737,8 @@ CKYTCR_CUDAReg(
 
 // compute the production rate for each species
 __device__ __forceinline__ void
-CKWC_CUDAReg(
-  const amrex::Real T, volatile amrex::Real C[64], volatile amrex::Real wdot[NUM_SPECIES])
+CKWC_HIP(
+  const amrex::Real T, volatile amrex::Real C[64], amrex::Real wdot[NUM_SPECIES])
 {
   // convert to SI
   if (threadIdx.x < NUM_SPECIES) {
@@ -5748,14 +5747,14 @@ CKWC_CUDAReg(
   __syncthreads();
 
   if (threadIdx.x == 0) {
-    productionRate_CUDAReg(wdot, C, T);
+    productionRate_HIP(wdot, C, T);
   }
   __syncthreads();
 
   // convert to chemkin units
   if (threadIdx.x < NUM_SPECIES) {
     C[threadIdx.x] *= 1.0e-6;
-    wdot[threadIdx.x] *= 1.0e-6;  
+    wdot[threadIdx.x] *= 1.0e-6;
   }
 }
 
