@@ -541,6 +541,7 @@ fKernelSpecOpt_HIP(
 
 template <typename OrderType>
 __global__ void
+__launch_bounds__(256)
 fKernelSpecBase_HIP(
   const int ncells,
   const amrex::Real dt_save,
@@ -591,6 +592,64 @@ fKernelSpecBase_HIP(
   }
   ydot_d[vec_index<OrderType>(NUM_SPECIES, tidx, ncells)] =
     rhoesrc * (rho_pt_inv / Cv_pt);
+}
+
+template <typename OrderType>
+__global__ void
+__launch_bounds__(256)
+cF_RHS_HIP(
+  const int ncells,
+  const amrex::Real dt_save,
+  const amrex::Real* yvec_d,
+  amrex::Real* ydot_d, // NOLINT(readability-non-const-parameter)
+  const amrex::Real* rhoe_init,
+  const amrex::Real* rhoesrc_ext,
+  const amrex::Real* rYs)
+{
+  // const int tidx = blockDim.x * blockIdx.x + threadIdx.x; // thread index
+  // if (tidx >= ncells)
+  //   return;
+
+  for (long i = long(blockDim.x)*blockIdx.x+threadIdx.x, stride = long(blockDim.x)*gridDim.x; i < long(ncells); i += stride)
+  {
+    amrex::Real rho_pt = 0.0;
+    amrex::GpuArray<amrex::Real, NUM_SPECIES> massfrac = {0.0};
+    for (int n = 0; n < NUM_SPECIES; n++) {
+      massfrac[n] = yvec_d[vec_index<OrderType>(n, i, ncells)];
+      rho_pt += massfrac[n];
+    }
+    const amrex::Real rho_pt_inv = 1.0 / rho_pt;
+
+    for (int n = 0; n < NUM_SPECIES; n++) {
+      massfrac[n] *= rho_pt_inv;
+    }
+
+    const amrex::Real nrg_pt =
+      (rhoe_init[i] + rhoesrc_ext[i] * dt_save) * rho_pt_inv;
+
+    amrex::Real temp_pt = yvec_d[vec_index<OrderType>(NUM_SPECIES, i, ncells)];
+
+    amrex::Real Cv_pt = 0.0;
+    amrex::GpuArray<amrex::Real, NUM_SPECIES> ei_pt = {0.0};
+
+    auto eos = pele::physics::PhysicsType::eos();
+    eos.REY2T(rho_pt, nrg_pt, massfrac.arr, temp_pt);
+    eos.RTY2Ei(rho_pt, temp_pt, massfrac.arr, ei_pt.arr);
+    eos.RTY2Cv(rho_pt, temp_pt, massfrac.arr, Cv_pt);
+
+    amrex::GpuArray<amrex::Real, NUM_SPECIES> cdots_pt = {0.0};
+    eos.RTY2WDOT(rho_pt, temp_pt, massfrac.arr, cdots_pt.arr);
+
+    amrex::Real rhoesrc = rhoesrc_ext[i];
+    for (int n = 0; n < NUM_SPECIES; n++) {
+      const amrex::Real cdot_rYs =
+        cdots_pt[n] + rYs[spec_index<OrderType>(n, i, ncells)];
+      ydot_d[vec_index<OrderType>(n, i, ncells)] = cdot_rYs;
+      rhoesrc -= cdot_rYs * ei_pt[n];
+    }
+    ydot_d[vec_index<OrderType>(NUM_SPECIES, i, ncells)] =
+      rhoesrc * (rho_pt_inv / Cv_pt);
+  }
 }
 
 template <typename OrderType>
