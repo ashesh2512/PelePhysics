@@ -1800,8 +1800,8 @@ ReactorCvode::cF_RHS(
 
     cudaFree(mat_7_d); 
     cudaFree(mat_6_d);   
-    free(mat_7_h); 
-    free(mat_6_h); 
+    delete[] mat_7_h; 
+    delete[] mat_6_h; 
   }
 
   ///////////////////////////////////////////////////////////////////////
