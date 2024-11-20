@@ -1761,7 +1761,7 @@ ReactorCvode::cF_RHS(
   ///////////////////////////////////////////////////////////////////////
 
   {
-    const int num_cells_per_block = 3;
+    const int num_cells_per_block = 1;
     const int nthreads_per_block = 64*num_cells_per_block; // multiple of warpSize rounded up,
                                         // based on number of species
     dim3 block(nthreads_per_block);

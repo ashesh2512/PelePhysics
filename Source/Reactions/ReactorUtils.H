@@ -453,6 +453,7 @@ fKernelSpec_HIPReg(
 
 template <typename OrderType>
 __global__ void
+__launch_bounds__(64)
 fKernelSpecOpt_HIP(
   const int ncells,
   const amrex::Real dt_save,
@@ -462,17 +463,17 @@ fKernelSpecOpt_HIP(
   const amrex::Real* rhoesrc_ext,
   const amrex::Real* rYs)
 {
-  const int num_cells_per_block = 3;
+  const int num_cells_per_block = 1;
   const int lcl_cell_idx = threadIdx.x / 64;
   const int glb_cell_idx = blockIdx.x * num_cells_per_block + lcl_cell_idx;
   const int lcl_cell_thread_idx = threadIdx.x % 64;
 
   if (glb_cell_idx < ncells) {
 
-    __shared__ volatile amrex::Real massfrac[num_cells_per_block][NUM_SPECIES];
-    __shared__ volatile amrex::Real ei_pt[num_cells_per_block][NUM_SPECIES];
-    __shared__ volatile amrex::Real cdots_pt[num_cells_per_block][NUM_SPECIES];
-    __shared__ volatile amrex::Real scratch[num_cells_per_block][64];
+    __shared__ amrex::Real massfrac[num_cells_per_block][NUM_SPECIES];
+    __shared__ amrex::Real ei_pt[num_cells_per_block][NUM_SPECIES];
+    __shared__ amrex::Real cdots_pt[num_cells_per_block][NUM_SPECIES];
+    __shared__ amrex::Real scratch[num_cells_per_block][64];
 
     scratch[lcl_cell_idx][lcl_cell_thread_idx] = 0.0;
 
@@ -481,18 +482,12 @@ fKernelSpecOpt_HIP(
         yvec_d[vec_index<OrderType>(lcl_cell_thread_idx, glb_cell_idx, ncells)];
       scratch[lcl_cell_idx][lcl_cell_thread_idx] = massfrac[lcl_cell_idx][lcl_cell_thread_idx];
     }
-    __syncthreads();
 
-    // Hard coded for warp sizes of 32
-    if (lcl_cell_thread_idx < 32) {
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 32];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 16];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 8];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 4];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 2];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 1];
+    for (int stride = 32; stride > 0; stride /= 2) {
+      if (lcl_cell_thread_idx < stride) {
+          scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + stride];
+      }
     }
-    // __syncthreads(); // not needed because AMD is more stringent about wave being in lockstep
 
     // this "should" be a broadcast
     amrex::Real rho_pt = scratch[lcl_cell_idx][0];
@@ -501,7 +496,6 @@ fKernelSpecOpt_HIP(
     if (lcl_cell_thread_idx < NUM_SPECIES) {
       massfrac[lcl_cell_idx][lcl_cell_thread_idx] *= rho_pt_inv;
     }
-    __syncthreads(); // before next usage of massfrac
 
     const amrex::Real nrg_pt =
       (rhoe_init[glb_cell_idx] + rhoesrc_ext[glb_cell_idx] * dt_save) * rho_pt_inv;
@@ -515,7 +509,6 @@ fKernelSpecOpt_HIP(
       eos.REY2T_HIP(rho_pt, nrg_pt, massfrac[lcl_cell_idx], temp_pt);
       eos.RTY2Cv_HIP(rho_pt, temp_pt, massfrac[lcl_cell_idx], Cv_pt);
     }
-    __syncthreads();
     
     eos.RTY2Ei_HIP(rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx], lcl_cell_thread_idx);
     eos.RTY2WDOT_HIP(rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx], lcl_cell_thread_idx);
@@ -531,15 +524,11 @@ fKernelSpecOpt_HIP(
       scratch[lcl_cell_idx][lcl_cell_thread_idx] *=
         ei_pt[lcl_cell_idx][lcl_cell_thread_idx];
     }
-    __syncthreads();
 
-    if (lcl_cell_thread_idx < 32) {
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 32];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 16];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 8];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 4];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 2];
-      scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 1];
+    for (int stride = 32; stride > 0; stride /= 2) {
+      if (lcl_cell_thread_idx < stride) {
+          scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + stride];
+      }
     }
 
     if (lcl_cell_thread_idx == 0) {
@@ -551,6 +540,7 @@ fKernelSpecOpt_HIP(
 
 template <typename OrderType>
 __global__ void
+__launch_bounds__(256)
 fKernelSpecBase_HIP(
   const int ncells,
   const amrex::Real dt_save,
