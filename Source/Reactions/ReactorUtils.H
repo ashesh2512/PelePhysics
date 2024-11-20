@@ -360,7 +360,7 @@ public:
 
 template <typename OrderType>
 __global__ void
-fKernelSpec_CUDAReg(
+fKernelSpec_HIPReg(
   const int ncells,
   const amrex::Real dt_save,
   const amrex::Real* yvec_d,
@@ -415,13 +415,13 @@ fKernelSpec_CUDAReg(
     amrex::Real Cv_pt = 0.0;
     auto eos = pele::physics::PhysicsType::eos();
     if (threadIdx.x == 0) {
-      eos.REY2T_CUDAReg(rho_pt, nrg_pt, massfrac, temp_pt);
-      eos.RTY2Cv_CUDAReg(rho_pt, temp_pt, massfrac, Cv_pt);
+      eos.REY2T_HIPReg(rho_pt, nrg_pt, massfrac, temp_pt);
+      eos.RTY2Cv_HIPReg(rho_pt, temp_pt, massfrac, Cv_pt);
     }
     __syncthreads();
 
-    eos.RTY2Ei_CUDAReg(rho_pt, temp_pt, massfrac, ei_pt);
-    eos.RTY2WDOT_CUDAReg(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
+    eos.RTY2Ei_HIPReg(rho_pt, temp_pt, massfrac, ei_pt);
+    eos.RTY2WDOT_HIPReg(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
 
     if (threadIdx.x < NUM_SPECIES) {
       scratch[threadIdx.x] =
@@ -453,7 +453,7 @@ fKernelSpec_CUDAReg(
 
 template <typename OrderType>
 __global__ void
-fKernelSpecOpt_CUDA(
+fKernelSpecOpt_HIP(
   const int ncells,
   const amrex::Real dt_save,
   const amrex::Real* yvec_d,
@@ -492,7 +492,7 @@ fKernelSpecOpt_CUDA(
       scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 2];
       scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + 1];
     }
-    __syncthreads();
+    // __syncthreads(); // not needed because AMD is more stringent about wave being in lockstep
 
     // this "should" be a broadcast
     amrex::Real rho_pt = scratch[lcl_cell_idx][0];
@@ -512,13 +512,13 @@ fKernelSpecOpt_CUDA(
     amrex::Real Cv_pt = 0.0;
     auto eos = pele::physics::PhysicsType::eos();
     if (lcl_cell_thread_idx == 0) {
-      eos.REY2T_CUDA(rho_pt, nrg_pt, massfrac[lcl_cell_idx], temp_pt);
-      eos.RTY2Cv_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], Cv_pt);
+      eos.REY2T_HIP(rho_pt, nrg_pt, massfrac[lcl_cell_idx], temp_pt);
+      eos.RTY2Cv_HIP(rho_pt, temp_pt, massfrac[lcl_cell_idx], Cv_pt);
     }
     __syncthreads();
     
-    eos.RTY2Ei_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx], lcl_cell_thread_idx);
-    eos.RTY2WDOT_CUDA(rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx], lcl_cell_thread_idx);
+    eos.RTY2Ei_HIP(rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx], lcl_cell_thread_idx);
+    eos.RTY2WDOT_HIP(rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx], lcl_cell_thread_idx);
 
     if (lcl_cell_thread_idx < NUM_SPECIES) {
       scratch[lcl_cell_idx][lcl_cell_thread_idx] =
@@ -551,7 +551,7 @@ fKernelSpecOpt_CUDA(
 
 template <typename OrderType>
 __global__ void
-fKernelSpecBase_CUDA(
+fKernelSpecBase_HIP(
   const int ncells,
   const amrex::Real dt_save,
   const amrex::Real* yvec_d,
