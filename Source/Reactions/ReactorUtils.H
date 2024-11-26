@@ -462,10 +462,10 @@ fKernelSpecOpt_HIP(
 {
   if (blockIdx.x < ncells) {
 
-    __shared__ volatile amrex::Real massfrac[NUM_SPECIES];
-    __shared__ volatile amrex::Real ei_pt[NUM_SPECIES];
-    __shared__ volatile amrex::Real cdots_pt[NUM_SPECIES];
-    __shared__ volatile amrex::Real scratch[64];
+    __shared__ amrex::Real massfrac[NUM_SPECIES];
+    __shared__ amrex::Real ei_pt[NUM_SPECIES];
+    __shared__ amrex::Real cdots_pt[NUM_SPECIES];
+    __shared__ amrex::Real scratch[64];
 
     scratch[threadIdx.x] = 0.0;
 
@@ -476,15 +476,12 @@ fKernelSpecOpt_HIP(
     }
     __syncthreads();
 
-    if (threadIdx.x < 32) {
-      scratch[threadIdx.x] += scratch[threadIdx.x + 32];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 16];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 8];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 4];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 2];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 1];
+    for (int stride = 32; stride > 0; stride /= 2) {
+        if (threadIdx.x < stride) {
+            scratch[threadIdx.x] += scratch[threadIdx.x + stride];
+        }
+        // __syncthreads();
     }
-    // __syncthreads();
 
     // this "should" be a broadcast
     const amrex::Real rho_pt = scratch[0];
@@ -522,13 +519,11 @@ fKernelSpecOpt_HIP(
     }
     __syncthreads();
 
-    if (threadIdx.x < 32) {
-      scratch[threadIdx.x] += scratch[threadIdx.x + 32];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 16];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 8];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 4];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 2];
-      scratch[threadIdx.x] += scratch[threadIdx.x + 1];
+    for (int stride = 32; stride > 0; stride /= 2) {
+        if (threadIdx.x < stride) {
+            scratch[threadIdx.x] += scratch[threadIdx.x + stride];
+        }
+        // __syncthreads();
     }
 
     if (threadIdx.x == 0) {
