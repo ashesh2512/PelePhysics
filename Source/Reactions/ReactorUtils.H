@@ -450,6 +450,7 @@ fKernelSpec_HIPReg(
 
 template <typename OrderType>
 __global__ void
+__launch_bounds__(64)
 fKernelSpecOpt_HIP(
   const int ncells,
   const amrex::Real dt_save,
@@ -539,6 +540,7 @@ fKernelSpecOpt_HIP(
 
 template <typename OrderType>
 __global__ void
+__launch_bounds__(256)
 fKernelSpecBase_HIP(
   const int ncells,
   const amrex::Real dt_save,
