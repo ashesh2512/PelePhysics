@@ -1747,21 +1747,21 @@ ReactorCvode::cF_RHS(
 
   {
     const int block_size = 256;
-    utils::fKernelSpecBase_CUDA<Ordering>
+    utils::fKernelSpecBase_HIP<Ordering>
       <<<(ncells + block_size - 1) / block_size, block_size>>>(
         ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
   }
-  cudaDeviceSynchronize();
+  hipDeviceSynchronize();
 
   /////////////////////////////////////////////////////////////////////
 
   // {
   //   const int nthreads_per_block = 64; // multiple of warpSize rounded up,
   //                                      // based on number of species
-  //   utils::fKernelSpec_CUDAReg<Ordering><<<ncells, nthreads_per_block>>>(
+  //   utils::fKernelSpec_HIPReg<Ordering><<<ncells, nthreads_per_block>>>(
   //     ncells, dt_save, yvec_d, ydot_d, rhoe_init, rhoesrc_ext, rYsrc_ext);
   // }
-  // cudaDeviceSynchronize();
+  // hipDeviceSynchronize();
 
   ///////////////////////////////////////////////////////////////////////
 
@@ -1780,56 +1780,31 @@ ReactorCvode::cF_RHS(
 
     amrex::Real* mat_7_d; 
     amrex::Real* mat_6_d;
-    cudaMalloc(&mat_7_d, 7*NUM_SPECIES * sizeof(amrex::Real)); // allocate device space for dummy mat
-    cudaMalloc(&mat_6_d, 6*NUM_SPECIES * sizeof(amrex::Real)); // allocate device space for dummy mat
+    hipMalloc(&mat_7_d, 7*NUM_SPECIES * sizeof(amrex::Real)); // allocate device space for dummy mat
+    hipMalloc(&mat_6_d, 6*NUM_SPECIES * sizeof(amrex::Real)); // allocate device space for dummy mat
 
-    cudaMemcpy(mat_7_d, mat_7_h, 7*NUM_SPECIES * sizeof(amrex::Real), cudaMemcpyHostToDevice);
-    cudaMemcpy(mat_6_d, mat_6_h, 6*NUM_SPECIES * sizeof(amrex::Real), cudaMemcpyHostToDevice);
+    hipMemcpy(mat_7_d, mat_7_h, 7*NUM_SPECIES * sizeof(amrex::Real), hipMemcpyHostToDevice);
+    hipMemcpy(mat_6_d, mat_6_h, 6*NUM_SPECIES * sizeof(amrex::Real), hipMemcpyHostToDevice);
 
-    const int num_cells_per_block = 4;
-    const int nthreads_per_block = 32 * num_cells_per_block;
+    const int num_cells_per_block = 1;
+    const int nthreads_per_block = 64 * num_cells_per_block;
 
     dim3 block(nthreads_per_block);
     dim3 grid( (ncells + num_cells_per_block - 1) / num_cells_per_block); // multiple cells assigned 1 block
 
-    utils::fKernelSpecOpt_CUDA<Ordering><<<grid, block>>>(
+    utils::fKernelSpecOpt_HIP<Ordering><<<grid, block>>>(
       ncells, dt_save, yvec_d, ydot_d_opt_ptr, rhoe_init, rhoesrc_ext,
       rYsrc_ext, mat_7_d, mat_6_d, mat_6_d);
 
-    cudaDeviceSynchronize();
+    hipDeviceSynchronize();
 
-    cudaFree(mat_7_d); 
-    cudaFree(mat_6_d);   
+    hipFree(mat_7_d); 
+    hipFree(mat_6_d);   
     delete[] mat_7_h; 
     delete[] mat_6_h; 
   }
 
   ///////////////////////////////////////////////////////////////////////
-
-  // N_VCopyFromDevice_Cuda(ydot_in);
-  // N_VCopyFromDevice_Cuda(ydot_d_opt);
-  // amrex::Real* ydot_h_base = N_VGetHostArrayPointer_Cuda(ydot_in);
-  // amrex::Real* ydot_h_opt = N_VGetHostArrayPointer_Cuda(ydot_d_opt);
-
-  // amrex::Real base = 0.0;
-  // amrex::Real opt = 0.0;
-  // amrex::Real diff = 0.0;
-  // amrex::Real tol = 1e-4;
-  // for (int i = 0; i < ncells; i++) {
-  //   for (int n = 0; n < (NUM_SPECIES + 1); n++) {
-  //     base = ydot_h_base[utils::vec_index<Ordering>(n, i, ncells)];
-  //     opt = ydot_h_opt[utils::vec_index<Ordering>(n, i, ncells)];
-  //     diff = base - opt;
-
-  //     if ((std::abs(diff) > tol) && (std::abs(diff / base) > tol)) {
-  //       printf(
-  //         "Base: %16.16f, Opt: %16.16f, Abs Diff: %16.16f, Rel Diff: %16.16f, "
-  //         "for cell %d, for entry %d \n",
-  //         base, opt, std::abs(diff), std::abs(diff / base), i, n);
-  //       amrex::Abort("Someone messed up the computations.");
-  //     }
-  //   }
-  // }
 
   N_VDestroy(ydot_d_opt);
 

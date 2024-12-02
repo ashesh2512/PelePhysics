@@ -6,8 +6,8 @@
 #include <AMReX_Utility.H>
 
 #include "mechanism.H"
-#include "mechanism_cuda.H"
-#include "mechanism_cudareg.H"
+#include "mechanism_hip.H"
+#include "mechanism_hipreg.H"
 #include "PhysicsConstants.H"
 
 namespace pele::physics::eos {
@@ -48,23 +48,22 @@ struct Fuego
     TY2Cp(T, Y, Cp);
   }
 
-  __device__ __forceinline__ static void TY2Cv_CUDAReg(
+  __device__ __forceinline__ static void TY2Cv_HIPReg(
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     amrex::Real& Cv)
   {
-    CKCVBS_CUDAReg(T, Y, Cv);
+    CKCVBS_HIPReg(T, Y, Cv);
   }
 
-  __device__ __forceinline__ static void TY2Cv_CUDA(
+  __device__ __forceinline__ static void TY2Cv_HIP(
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real scratch[64],
     amrex::Real& Cv,
-    const int tidx,
     const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
   {
-    CKCVBS_CUDA(T, Y, Cv, scratch, tidx, ceoffs_CKCVBS);
+    CKCVBS_HIP(T, Y, Cv, scratch, ceoffs_CKCVBS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -75,25 +74,24 @@ struct Fuego
     CKCVBS(T, Y, Cv);
   }
 
-  __device__ __forceinline__ static void RTY2Cv_CUDAReg(
+  __device__ __forceinline__ static void RTY2Cv_HIPReg(
     const amrex::Real /*R*/,
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     amrex::Real& Cv)
   {
-    TY2Cv_CUDAReg(T, Y, Cv);
+    TY2Cv_HIPReg(T, Y, Cv);
   }
 
-  __device__ __forceinline__ static void RTY2Cv_CUDA(
+  __device__ __forceinline__ static void RTY2Cv_HIP(
     const amrex::Real /*R*/,
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real scratch[64],
     amrex::Real& Cv,
-    const int tidx,
     const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
   {
-    TY2Cv_CUDA(T, Y, scratch, Cv, tidx, ceoffs_CKCVBS);
+    TY2Cv_HIP(T, Y, scratch, Cv, ceoffs_CKCVBS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -157,30 +155,29 @@ struct Fuego
     Cs = std::sqrt(G * P / R);
   }
 
-  __device__ __forceinline__ static void EY2T_CUDAReg(
+  __device__ __forceinline__ static void EY2T_HIPReg(
     const amrex::Real E,
     volatile const amrex::Real Y[NUM_SPECIES],
     amrex::Real& T)
   {
-    // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_CUDA
+    // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_HIP
     // In SRK this will be different probably
     int lierr = 0;
-     GET_T_GIVEN_EY_CUDAReg(E, Y, T, lierr);
+     GET_T_GIVEN_EY_HIPReg(E, Y, T, lierr);
   }
 
-  __device__ __forceinline__ static void EY2T_CUDA(
+  __device__ __forceinline__ static void EY2T_HIP(
     const amrex::Real E,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real scratch[64],
     amrex::Real& T,
-    const int tidx,
     const amrex::Real ceoffs_CKUBMS[7*NUM_SPECIES], 
     const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
   {
-    // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_CUDA
+    // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_HIP
     // In SRK this will be different probably
     int lierr = 0;
-    GET_T_GIVEN_EY_CUDA(E, Y, scratch, T, lierr, tidx, ceoffs_CKUBMS, ceoffs_CKCVBS);
+    GET_T_GIVEN_EY_HIP(E, Y, scratch, T, lierr, ceoffs_CKUBMS, ceoffs_CKCVBS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -194,26 +191,25 @@ struct Fuego
     GET_T_GIVEN_EY(E, Y, T, lierr);
   }
 
-  __device__ __forceinline__ static void REY2T_CUDAReg(
+  __device__ __forceinline__ static void REY2T_HIPReg(
     const amrex::Real /*R*/,
     const amrex::Real E,
     volatile const amrex::Real Y[NUM_SPECIES],
     amrex::Real& T)
   {
-    EY2T_CUDAReg(E, Y, T);
+    EY2T_HIPReg(E, Y, T);
   }
 
-  __device__ __forceinline__ static void REY2T_CUDA(
+  __device__ __forceinline__ static void REY2T_HIP(
     const amrex::Real /*R*/,
     const amrex::Real E,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real scratch[64],
     amrex::Real& T,
-    const int tidx,
     const amrex::Real ceoffs_CKUBMS[7*NUM_SPECIES], 
     const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
   {
-    EY2T_CUDA(E, Y, scratch, T, tidx, ceoffs_CKUBMS, ceoffs_CKCVBS);
+    EY2T_HIP(E, Y, scratch, T, ceoffs_CKUBMS, ceoffs_CKCVBS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -287,34 +283,33 @@ struct Fuego
     T = P * wbar / (R * Constants::RU);
   }
 
-  __device__ __forceinline__ static void RTY2WDOT_CUDAReg(
+  __device__ __forceinline__ static void RTY2WDOT_HIPReg(
     const amrex::Real R,
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real WDOT[NUM_SPECIES],
     volatile amrex::Real scratch[64])
   {
-    CKYTCR_CUDAReg(R, T, Y, scratch);
-    CKWC_CUDAReg(T, scratch, WDOT);
+    CKYTCR_HIPReg(R, T, Y, scratch);
+    CKWC_HIPReg(T, scratch, WDOT);
 
     if (threadIdx.x < NUM_SPECIES) {
       WDOT[threadIdx.x] *= mw(threadIdx.x);
     }
   }
 
-  __device__ __forceinline__ static void RTY2WDOT_CUDA(
+  __device__ __forceinline__ static void RTY2WDOT_HIP(
     const amrex::Real R,
     const amrex::Real T,
     volatile const amrex::Real Y[NUM_SPECIES],
     volatile amrex::Real WDOT[NUM_SPECIES],
-    volatile amrex::Real scratch[64],
-    const int tidx)
+    volatile amrex::Real scratch[64])
   {
-    CKYTCR_CUDA(R, T, Y, scratch, tidx);
-    CKWC_CUDA(T, scratch, WDOT, tidx);
+    CKYTCR_HIP(R, T, Y, scratch);
+    CKWC_HIP(T, scratch, WDOT);
 
-    for (int i = tidx; i < NUM_SPECIES; i += 32) {
-      WDOT[i] *= mw(i);
+    if (threadIdx.x < NUM_SPECIES) {
+      WDOT[threadIdx.x] *= mw(threadIdx.x);
     }
   }
 
@@ -366,18 +361,17 @@ struct Fuego
   }
 
   __device__ __forceinline__ static void
-  T2Ei_CUDAReg(const amrex::Real T, volatile amrex::Real Ei[NUM_SPECIES])
+  T2Ei_HIPReg(const amrex::Real T, volatile amrex::Real Ei[NUM_SPECIES])
   {
-    CKUMS_CUDAReg(T, Ei);
+    CKUMS_HIPReg(T, Ei);
   }
 
-  __device__ __forceinline__ static void T2Ei_CUDA(
+  __device__ __forceinline__ static void T2Ei_HIP(
     const amrex::Real T,
     volatile amrex::Real Ei[NUM_SPECIES],
-    const int tidx,
     const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES])
   {
-    CKUMS_CUDA(T, Ei, tidx, ceoffs_CKUMS);
+    CKUMS_HIP(T, Ei, ceoffs_CKUMS);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -387,24 +381,23 @@ struct Fuego
     CKUMS(T, Ei);
   }
 
-  __device__ __forceinline__ static void RTY2Ei_CUDAReg(
+  __device__ __forceinline__ static void RTY2Ei_HIPReg(
     const amrex::Real /*R*/,
     const amrex::Real T,
     volatile const amrex::Real* /*Y[]*/,
     volatile amrex::Real Ei[NUM_SPECIES])
   {
-    T2Ei_CUDAReg(T, Ei);
+    T2Ei_HIPReg(T, Ei);
   }
 
-  __device__ __forceinline__ static void RTY2Ei_CUDA(
+  __device__ __forceinline__ static void RTY2Ei_HIP(
     const amrex::Real /*R*/,
     const amrex::Real T,
     volatile const amrex::Real* /*Y[]*/,
     volatile amrex::Real Ei[NUM_SPECIES],
-    const int tidx,
     const amrex::Real ceoffs_CKUMS[6*NUM_SPECIES])
   {
-    T2Ei_CUDA(T, Ei, tidx, ceoffs_CKUMS);
+    T2Ei_HIP(T, Ei, ceoffs_CKUMS);
   }
 
   AMREX_GPU_HOST_DEVICE
