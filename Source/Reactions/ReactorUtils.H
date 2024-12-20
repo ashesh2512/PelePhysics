@@ -474,13 +474,11 @@ fKernelSpecOpt_HIP(
         yvec_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
       scratch[threadIdx.x] = massfrac[threadIdx.x];
     }
-    __syncthreads();
 
     for (int stride = 32; stride > 0; stride /= 2) {
         if (threadIdx.x < stride) {
             scratch[threadIdx.x] += scratch[threadIdx.x + stride];
         }
-        // __syncthreads();
     }
 
     // this "should" be a broadcast
@@ -490,7 +488,6 @@ fKernelSpecOpt_HIP(
     if (threadIdx.x < NUM_SPECIES) {
       massfrac[threadIdx.x] *= rho_pt_inv;
     }
-    __syncthreads(); // before next usage of massfrac
 
     const amrex::Real nrg_pt =
       (rhoe_init[blockIdx.x] + rhoesrc_ext[blockIdx.x] * dt_save) * rho_pt_inv;
@@ -504,7 +501,6 @@ fKernelSpecOpt_HIP(
       eos.REY2T_HIP(rho_pt, nrg_pt, massfrac, temp_pt);
       eos.RTY2Cv_HIP(rho_pt, temp_pt, massfrac, Cv_pt);
     }
-    __syncthreads();
 
     eos.RTY2Ei_HIP(rho_pt, temp_pt, massfrac, ei_pt);
     eos.RTY2WDOT_HIP(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
@@ -517,13 +513,11 @@ fKernelSpecOpt_HIP(
         scratch[threadIdx.x];
       scratch[threadIdx.x] *= ei_pt[threadIdx.x];
     }
-    __syncthreads();
 
     for (int stride = 32; stride > 0; stride /= 2) {
         if (threadIdx.x < stride) {
             scratch[threadIdx.x] += scratch[threadIdx.x + stride];
         }
-        // __syncthreads();
     }
 
     if (threadIdx.x == 0) {

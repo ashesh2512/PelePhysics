@@ -5715,7 +5715,6 @@ CKUMS_HIP(const amrex::Real T, amrex::Real ums[NUM_SPECIES])
   if (threadIdx.x == 0) {
     speciesInternalEnergy_HIP(ums, T);
   }
-  __syncthreads();
 
   if (threadIdx.x < NUM_SPECIES) {
     ums[threadIdx.x] *= 8.31446261815324e+07 * T * imw(threadIdx.x);
@@ -5744,12 +5743,10 @@ CKWC_HIP(
   if (threadIdx.x < NUM_SPECIES) {
     C[threadIdx.x] *= 1.0e6;
   }
-  __syncthreads();
 
   if (threadIdx.x == 0) {
     productionRate_HIP(wdot, C, T);
   }
-  __syncthreads();
 
   // convert to chemkin units
   if (threadIdx.x < NUM_SPECIES) {
