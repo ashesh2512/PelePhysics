@@ -50,7 +50,7 @@ struct Fuego
 
   __device__ __forceinline__ static void TY2Cv_HIPReg(
     const amrex::Real T,
-    volatile const amrex::Real Y[NUM_SPECIES],
+    const amrex::Real Y[NUM_SPECIES],
     amrex::Real& Cv)
   {
     CKCVBS_HIPReg(T, Y, Cv);
@@ -58,7 +58,7 @@ struct Fuego
 
   __device__ __forceinline__ static void TY2Cv_HIP(
     const amrex::Real T,
-    const amrex::Real Y[NUM_SPECIES],
+    const amrex::Real Y[64],
     amrex::Real& Cv)
   {
     CKCVBS_HIP(T, Y, Cv);
@@ -75,7 +75,7 @@ struct Fuego
   __device__ __forceinline__ static void RTY2Cv_HIPReg(
     const amrex::Real /*R*/,
     const amrex::Real T,
-    volatile const amrex::Real Y[NUM_SPECIES],
+    const amrex::Real Y[NUM_SPECIES],
     amrex::Real& Cv)
   {
     TY2Cv_HIPReg(T, Y, Cv);
@@ -84,7 +84,7 @@ struct Fuego
   __device__ __forceinline__ static void RTY2Cv_HIP(
     const amrex::Real /*R*/,
     const amrex::Real T,
-    const amrex::Real Y[NUM_SPECIES],
+    const amrex::Real Y[64],
     amrex::Real& Cv)
   {
     TY2Cv_HIP(T, Y, Cv);
@@ -153,7 +153,7 @@ struct Fuego
 
   __device__ __forceinline__ static void EY2T_HIPReg(
     const amrex::Real E,
-    volatile const amrex::Real Y[NUM_SPECIES],
+    const amrex::Real Y[NUM_SPECIES],
     amrex::Real& T)
   {
     // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_HIP
@@ -164,7 +164,7 @@ struct Fuego
 
   __device__ __forceinline__ static void EY2T_HIP(
     const amrex::Real E,
-    const amrex::Real Y[NUM_SPECIES],
+    const amrex::Real Y[64],
     amrex::Real& T)
   {
     // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_HIP
@@ -187,7 +187,7 @@ struct Fuego
   __device__ __forceinline__ static void REY2T_HIPReg(
     const amrex::Real /*R*/,
     const amrex::Real E,
-    volatile const amrex::Real Y[NUM_SPECIES],
+    const amrex::Real Y[NUM_SPECIES],
     amrex::Real& T)
   {
     EY2T_HIPReg(E, Y, T);
@@ -196,7 +196,7 @@ struct Fuego
   __device__ __forceinline__ static void REY2T_HIP(
     const amrex::Real /*R*/,
     const amrex::Real E,
-    const amrex::Real Y[NUM_SPECIES],
+    const amrex::Real Y[64],
     amrex::Real& T)
   {
     EY2T_HIP(E, Y, T);
@@ -276,9 +276,9 @@ struct Fuego
   __device__ __forceinline__ static void RTY2WDOT_HIPReg(
     const amrex::Real R,
     const amrex::Real T,
-    volatile const amrex::Real Y[NUM_SPECIES],
-    volatile amrex::Real WDOT[NUM_SPECIES],
-    volatile amrex::Real scratch[64])
+    const amrex::Real Y[NUM_SPECIES],
+    amrex::Real WDOT[NUM_SPECIES],
+    amrex::Real scratch[64])
   {
     CKYTCR_HIPReg(R, T, Y, scratch);
     CKWC_HIPReg(T, scratch, WDOT);
@@ -291,8 +291,8 @@ struct Fuego
   __device__ __forceinline__ static void RTY2WDOT_HIP(
     const amrex::Real R,
     const amrex::Real T,
-    const amrex::Real Y[NUM_SPECIES],
-    amrex::Real WDOT[NUM_SPECIES],
+    const amrex::Real Y[64],
+    amrex::Real WDOT[64],
     amrex::Real scratch[64],
     const int tidx)
   {    
@@ -300,7 +300,7 @@ struct Fuego
     CKWC_HIP(T, scratch, WDOT, tidx);
     
     if(tidx < NUM_SPECIES){
-      WDOT[tidx] *= mw(tidx);
+      WDOT[threadIdx.x] *= mw(tidx);
     }
   }
 
@@ -352,13 +352,13 @@ struct Fuego
   }
 
   __device__ __forceinline__ static void
-  T2Ei_HIPReg(const amrex::Real T, volatile amrex::Real Ei[NUM_SPECIES])
+  T2Ei_HIPReg(const amrex::Real T, amrex::Real Ei[NUM_SPECIES])
   {
     CKUMS_HIPReg(T, Ei);
   }
 
   __device__ __forceinline__
-  static void T2Ei_HIP(const amrex::Real T, amrex::Real Ei[NUM_SPECIES], const int tidx)
+  static void T2Ei_HIP(const amrex::Real T, amrex::Real Ei[64], const int tidx)
   {
     CKUMS_HIP(T, Ei, tidx);
   }
@@ -373,8 +373,8 @@ struct Fuego
   __device__ __forceinline__ static void RTY2Ei_HIPReg(
     const amrex::Real /*R*/,
     const amrex::Real T,
-    volatile const amrex::Real* /*Y[]*/,
-    volatile amrex::Real Ei[NUM_SPECIES])
+    const amrex::Real* /*Y[]*/,
+    amrex::Real Ei[NUM_SPECIES])
   {
     T2Ei_HIPReg(T, Ei);
   }
@@ -383,7 +383,7 @@ struct Fuego
     const amrex::Real /*R*/,
     const amrex::Real T,
     const amrex::Real* /*Y[]*/,
-    amrex::Real Ei[NUM_SPECIES],
+    amrex::Real Ei[64],
     const int tidx)
   {
     T2Ei_HIP(T, Ei, tidx);

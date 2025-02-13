@@ -5710,14 +5710,14 @@ GET_T_GIVEN_EY_HIP(
 
 // Returns internal energy in mass units (Eq 30.)
 __device__ __forceinline__
-void CKUMS_HIP(const amrex::Real T, amrex::Real ums[NUM_SPECIES], const int tidx)
+void CKUMS_HIP(const amrex::Real T, amrex::Real ums[64], const int tidx)
 {
   if (tidx == 0) {
     speciesInternalEnergy_HIP(ums, T);
   }
 
   if(tidx < NUM_SPECIES) {
-    ums[tidx] *= 8.31446261815324e+07 * T * imw(tidx);
+    ums[threadIdx.x] *= 8.31446261815324e+07 * T * imw(tidx);
   }
 }
 
@@ -5726,23 +5726,23 @@ __device__ __forceinline__ void
 CKYTCR_HIP(
   const amrex::Real rho,
   amrex::Real /*T*/,
-  const amrex::Real y[NUM_SPECIES],
+  const amrex::Real y[64],
   amrex::Real c[64],
   const int tidx)
 {
   if(tidx < NUM_SPECIES){
-    c[tidx] = rho * y[tidx] * imw(tidx);
+    c[threadIdx.x] = rho * y[threadIdx.x] * imw(tidx);
   }
 }
 
 // compute the production rate for each species
 __device__ __forceinline__ void
 CKWC_HIP(
-  const amrex::Real T, amrex::Real C[64], amrex::Real wdot[NUM_SPECIES], const int tidx)
+  const amrex::Real T, amrex::Real C[64], amrex::Real wdot[64], const int tidx)
 {
   // convert to SI
   if (tidx < NUM_SPECIES) {
-    C[tidx] *= 1.0e6;
+    C[threadIdx.x] *= 1.0e6;
   }
 
   if(tidx == 0){
@@ -5751,8 +5751,8 @@ CKWC_HIP(
 
   // convert to chemkin units
   if (tidx < NUM_SPECIES) {
-    C[tidx] *= 1.0e-6;
-    wdot[tidx] *= 1.0e-6;
+    C[threadIdx.x] *= 1.0e-6;
+    wdot[threadIdx.x] *= 1.0e-6;
   }
 }
 
