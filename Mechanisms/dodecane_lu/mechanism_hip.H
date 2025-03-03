@@ -7,10 +7,11 @@
 __device__ __forceinline__ void
 CKUBMS_HIP(
   const amrex::Real T,
-  volatile const amrex::Real y[],
+  const amrex::Real y[],
   amrex::Real& ubms,
-  volatile amrex::Real scratch[],
-  const amrex::Real ceoffs_CKUBMS[7 * NUM_SPECIES])
+  amrex::Real scratch[],
+  const amrex::Real ceoffs_CKUBMS[7 * NUM_SPECIES],
+  const int tidx)
 {
   amrex::Real result = 0.0;
   const amrex::Real T2 = T * T;
@@ -18,38 +19,38 @@ CKUBMS_HIP(
   const amrex::Real T4 = T * T * T * T;
   const amrex::Real invT = 1.0 / T;
 
-  if (threadIdx.x < NUM_SPECIES) {
+  if (tidx < NUM_SPECIES) {
 
-    const amrex::Real a = ceoffs_CKUBMS[threadIdx.x];
-    const amrex::Real b = ceoffs_CKUBMS[NUM_SPECIES + threadIdx.x];
-    const amrex::Real c = ceoffs_CKUBMS[2 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real d = ceoffs_CKUBMS[3 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real e = ceoffs_CKUBMS[4 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real f = ceoffs_CKUBMS[5 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real g = ceoffs_CKUBMS[6 * NUM_SPECIES + threadIdx.x];
+    const amrex::Real a = ceoffs_CKUBMS[tidx];
+    const amrex::Real b = ceoffs_CKUBMS[NUM_SPECIES + tidx];
+    const amrex::Real c = ceoffs_CKUBMS[2 * NUM_SPECIES + tidx];
+    const amrex::Real d = ceoffs_CKUBMS[3 * NUM_SPECIES + tidx];
+    const amrex::Real e = ceoffs_CKUBMS[4 * NUM_SPECIES + tidx];
+    const amrex::Real f = ceoffs_CKUBMS[5 * NUM_SPECIES + tidx];
+    const amrex::Real g = ceoffs_CKUBMS[6 * NUM_SPECIES + tidx];
 
-    scratch[threadIdx.x] = y[threadIdx.x] * (a + b * T - c * T2 + d * T3 - e * T4 + f * invT) * g;
+    scratch[tidx] = y[tidx] * (a + b * T - c * T2 + d * T3 - e * T4 + f * invT) * g;
 
-    // scratch[threadIdx.x] = y[threadIdx.x] *
-    //              (ceoffs_CKUBMS[threadIdx.x] + ceoffs_CKUBMS[NUM_SPECIES + threadIdx.x] * T -
-    //               ceoffs_CKUBMS[2 * NUM_SPECIES + threadIdx.x] * T2 +
-    //               ceoffs_CKUBMS[3 * NUM_SPECIES + threadIdx.x] * T3 -
-    //               ceoffs_CKUBMS[4 * NUM_SPECIES + threadIdx.x] * T4 +
-    //               ceoffs_CKUBMS[5 * NUM_SPECIES + threadIdx.x] * invT) *
-    //              ceoffs_CKUBMS[6 * NUM_SPECIES + threadIdx.x];
+    // scratch[tidx] = y[tidx] *
+    //              (ceoffs_CKUBMS[tidx] + ceoffs_CKUBMS[NUM_SPECIES + tidx] * T -
+    //               ceoffs_CKUBMS[2 * NUM_SPECIES + tidx] * T2 +
+    //               ceoffs_CKUBMS[3 * NUM_SPECIES + tidx] * T3 -
+    //               ceoffs_CKUBMS[4 * NUM_SPECIES + tidx] * T4 +
+    //               ceoffs_CKUBMS[5 * NUM_SPECIES + tidx] * invT) *
+    //              ceoffs_CKUBMS[6 * NUM_SPECIES + tidx];
 
-    // scratch[threadIdx.x] = y[threadIdx.x] *
-    //              (ceoffs_CKUBMS[7*threadIdx.x] + ceoffs_CKUBMS[7*threadIdx.x + 1] * T -
-    //               ceoffs_CKUBMS[7*threadIdx.x + 2] * T2 +
-    //               ceoffs_CKUBMS[7*threadIdx.x + 3] * T3 -
-    //               ceoffs_CKUBMS[7*threadIdx.x + 4] * T4 +
-    //               ceoffs_CKUBMS[7*threadIdx.x + 5] * invT) *
-    //              ceoffs_CKUBMS[7*threadIdx.x + 6];
+    // scratch[tidx] = y[tidx] *
+    //              (ceoffs_CKUBMS[7*tidx] + ceoffs_CKUBMS[7*tidx + 1] * T -
+    //               ceoffs_CKUBMS[7*tidx + 2] * T2 +
+    //               ceoffs_CKUBMS[7*tidx + 3] * T3 -
+    //               ceoffs_CKUBMS[7*tidx + 4] * T4 +
+    //               ceoffs_CKUBMS[7*tidx + 5] * invT) *
+    //              ceoffs_CKUBMS[7*tidx + 6];
   }
 
   for (int stride = 32; stride > 0; stride /= 2) {
-      if (threadIdx.x < stride) {
-          scratch[threadIdx.x] += scratch[threadIdx.x + stride];
+      if (tidx < stride) {
+          scratch[tidx] += scratch[tidx + stride];
       }
   }
 
@@ -62,10 +63,11 @@ CKUBMS_HIP(
 __device__ __forceinline__ void
 CKCVBS_HIP(
   const amrex::Real T,
-  volatile const amrex::Real y[],
+  const amrex::Real y[],
   amrex::Real& cvbs,
-  volatile amrex::Real scratch[],
-  const amrex::Real ceoffs_CKCVBS[6 * NUM_SPECIES])
+  amrex::Real scratch[],
+  const amrex::Real ceoffs_CKCVBS[6 * NUM_SPECIES],
+  const int tidx)
 {
   amrex::Real result = 0.0;
   // compute Cv/R at the given temperature
@@ -73,35 +75,35 @@ CKCVBS_HIP(
   const amrex::Real T3 = T * T * T;
   const amrex::Real T4 = T * T * T * T;
 
-  if (threadIdx.x < NUM_SPECIES) {
+  if (tidx < NUM_SPECIES) {
 
-    const amrex::Real a = ceoffs_CKCVBS[threadIdx.x];
-    const amrex::Real b = ceoffs_CKCVBS[NUM_SPECIES + threadIdx.x];
-    const amrex::Real c = ceoffs_CKCVBS[2 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real d = ceoffs_CKCVBS[3 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real e = ceoffs_CKCVBS[4 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real f = ceoffs_CKCVBS[5 * NUM_SPECIES + threadIdx.x];
+    const amrex::Real a = ceoffs_CKCVBS[tidx];
+    const amrex::Real b = ceoffs_CKCVBS[NUM_SPECIES + tidx];
+    const amrex::Real c = ceoffs_CKCVBS[2 * NUM_SPECIES + tidx];
+    const amrex::Real d = ceoffs_CKCVBS[3 * NUM_SPECIES + tidx];
+    const amrex::Real e = ceoffs_CKCVBS[4 * NUM_SPECIES + tidx];
+    const amrex::Real f = ceoffs_CKCVBS[5 * NUM_SPECIES + tidx];
 
-    scratch[threadIdx.x] = y[threadIdx.x] * (a + b * T - c * T2 + d * T3 - e * T4 ) * f;
+    scratch[tidx] = y[tidx] * (a + b * T - c * T2 + d * T3 - e * T4 ) * f;
 
-    // scratch[threadIdx.x] = y[threadIdx.x] *
-    //              (ceoffs_CKCVBS[threadIdx.x] + ceoffs_CKCVBS[NUM_SPECIES + threadIdx.x] * T -
-    //               ceoffs_CKCVBS[2 * NUM_SPECIES + threadIdx.x] * T2 +
-    //               ceoffs_CKCVBS[3 * NUM_SPECIES + threadIdx.x] * T3 -
-    //               ceoffs_CKCVBS[4 * NUM_SPECIES + threadIdx.x] * T4) *
-    //              ceoffs_CKCVBS[5 * NUM_SPECIES + threadIdx.x];
+    // scratch[tidx] = y[tidx] *
+    //              (ceoffs_CKCVBS[tidx] + ceoffs_CKCVBS[NUM_SPECIES + tidx] * T -
+    //               ceoffs_CKCVBS[2 * NUM_SPECIES + tidx] * T2 +
+    //               ceoffs_CKCVBS[3 * NUM_SPECIES + tidx] * T3 -
+    //               ceoffs_CKCVBS[4 * NUM_SPECIES + tidx] * T4) *
+    //              ceoffs_CKCVBS[5 * NUM_SPECIES + tidx];
 
-    // scratch[threadIdx.x] =
-    //   y[threadIdx.x] *
-    //   (ceoffs_CKCVBS[6 * threadIdx.x] + ceoffs_CKCVBS[6 * threadIdx.x + 1] * T -
-    //    ceoffs_CKCVBS[6 * threadIdx.x + 2] * T2 + ceoffs_CKCVBS[6 * threadIdx.x + 3] * T3 -
-    //    ceoffs_CKCVBS[6 * threadIdx.x + 4] * T4) *
-    //   ceoffs_CKCVBS[6 * threadIdx.x + 5];
+    // scratch[tidx] =
+    //   y[tidx] *
+    //   (ceoffs_CKCVBS[6 * tidx] + ceoffs_CKCVBS[6 * tidx + 1] * T -
+    //    ceoffs_CKCVBS[6 * tidx + 2] * T2 + ceoffs_CKCVBS[6 * tidx + 3] * T3 -
+    //    ceoffs_CKCVBS[6 * tidx + 4] * T4) *
+    //   ceoffs_CKCVBS[6 * tidx + 5];
   }
 
   for (int stride = 32; stride > 0; stride /= 2) {
-      if (threadIdx.x < stride) {
-          scratch[threadIdx.x] += scratch[threadIdx.x + stride];
+      if (tidx < stride) {
+          scratch[tidx] += scratch[tidx + stride];
       }
   }
 
@@ -111,44 +113,45 @@ CKCVBS_HIP(
 // compute the e/(RT) at the given temperature
 __device__ __forceinline__ void
 speciesInternalEnergy_HIP(
-  volatile amrex::Real* species,
+  amrex::Real* species,
   const amrex::Real T,
-  const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES])
+  const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES],
+  const int tidx)
 {
   const amrex::Real T2 = T * T;
   const amrex::Real T3 = T * T * T;
   const amrex::Real T4 = T * T * T * T;
   const amrex::Real invT = 1.0 / T;
 
-  if (threadIdx.x < NUM_SPECIES) {
+  if (tidx < NUM_SPECIES) {
 
-    const amrex::Real a = ceoffs_CKUMS[threadIdx.x];
-    const amrex::Real b = ceoffs_CKUMS[NUM_SPECIES + threadIdx.x];
-    const amrex::Real c = ceoffs_CKUMS[2 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real d = ceoffs_CKUMS[3 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real e = ceoffs_CKUMS[4 * NUM_SPECIES + threadIdx.x];
-    const amrex::Real f = ceoffs_CKUMS[5 * NUM_SPECIES + threadIdx.x];
+    const amrex::Real a = ceoffs_CKUMS[tidx];
+    const amrex::Real b = ceoffs_CKUMS[NUM_SPECIES + tidx];
+    const amrex::Real c = ceoffs_CKUMS[2 * NUM_SPECIES + tidx];
+    const amrex::Real d = ceoffs_CKUMS[3 * NUM_SPECIES + tidx];
+    const amrex::Real e = ceoffs_CKUMS[4 * NUM_SPECIES + tidx];
+    const amrex::Real f = ceoffs_CKUMS[5 * NUM_SPECIES + tidx];
 
-    species[threadIdx.x] = a - b * T + c * T2 - d * T3 + e * T4 + f * invT;
+    species[tidx] = a - b * T + c * T2 - d * T3 + e * T4 + f * invT;
 
-    // species[threadIdx.x] = ceoffs_CKUMS[threadIdx.x] - ceoffs_CKUMS[NUM_SPECIES + threadIdx.x] * T +
-    //              ceoffs_CKUMS[2 * NUM_SPECIES + threadIdx.x] * T2 -
-    //              ceoffs_CKUMS[3 * NUM_SPECIES + threadIdx.x] * T3 +
-    //              ceoffs_CKUMS[4 * NUM_SPECIES + threadIdx.x] * T4 +
-    //              ceoffs_CKUMS[5 * NUM_SPECIES + threadIdx.x] * invT;
+    // species[tidx] = ceoffs_CKUMS[tidx] - ceoffs_CKUMS[NUM_SPECIES + tidx] * T +
+    //              ceoffs_CKUMS[2 * NUM_SPECIES + tidx] * T2 -
+    //              ceoffs_CKUMS[3 * NUM_SPECIES + tidx] * T3 +
+    //              ceoffs_CKUMS[4 * NUM_SPECIES + tidx] * T4 +
+    //              ceoffs_CKUMS[5 * NUM_SPECIES + tidx] * invT;
 
-    // species[threadIdx.x] = ceoffs_CKUMS[6*threadIdx.x] - ceoffs_CKUMS[6*threadIdx.x + 1] * T +
-    //              ceoffs_CKUMS[6*threadIdx.x + 2] * T2 -
-    //              ceoffs_CKUMS[6*threadIdx.x + 3] * T3 +
-    //              ceoffs_CKUMS[6*threadIdx.x + 4] * T4 +
-    //              ceoffs_CKUMS[6*threadIdx.x + 5] * invT;
+    // species[tidx] = ceoffs_CKUMS[6*tidx] - ceoffs_CKUMS[6*tidx + 1] * T +
+    //              ceoffs_CKUMS[6*tidx + 2] * T2 -
+    //              ceoffs_CKUMS[6*tidx + 3] * T3 +
+    //              ceoffs_CKUMS[6*tidx + 4] * T4 +
+    //              ceoffs_CKUMS[6*tidx + 5] * invT;
   }
 }
 
 __device__ __forceinline__ void
 productionRate_HIP(
-  volatile amrex::Real* wdot,
-  volatile const amrex::Real* sc,
+  amrex::Real* wdot,
+  const amrex::Real* sc,
   const amrex::Real T)
 {
   const amrex::Real invT = 1.0 / T;
@@ -4094,12 +4097,13 @@ productionRate_HIP(
 __device__ __forceinline__ void
 GET_T_GIVEN_EY_HIP(
   const amrex::Real e,
-  volatile const amrex::Real y[],
-  volatile amrex::Real scratch[64],
+  const amrex::Real y[],
+  amrex::Real scratch[64],
   amrex::Real& t,
   int& ierr,
   const amrex::Real ceoffs_CKUBMS[7*NUM_SPECIES], 
-  const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
+  const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES],
+  const int tidx)
 {
 #ifdef CONVERGENCE
   const int maxiter = 5000;
@@ -4111,18 +4115,18 @@ GET_T_GIVEN_EY_HIP(
   amrex::Real tmin = 90;   // max lower bound for thermo def
   amrex::Real tmax = 4000; // min upper bound for thermo def
   amrex::Real e1, emin, emax, cv, t1, dt;
-  CKUBMS_HIP(tmin, y, emin, scratch, ceoffs_CKUBMS);
-  CKUBMS_HIP(tmax, y, emax, scratch, ceoffs_CKUBMS);
+  CKUBMS_HIP(tmin, y, emin, scratch, ceoffs_CKUBMS, tidx);
+  CKUBMS_HIP(tmax, y, emax, scratch, ceoffs_CKUBMS, tidx);
   if (e < emin) {
     // Linear Extrapolation below tmin
-    CKCVBS_HIP(tmin, y, cv, scratch, ceoffs_CKCVBS);
+    CKCVBS_HIP(tmin, y, cv, scratch, ceoffs_CKCVBS, tidx);
     t = tmin - (emin - e) / cv;
     ierr = 1;
     return;
   }
   if (e > emax) {
     // Linear Extrapolation above tmax
-    CKCVBS_HIP(tmax, y, cv, scratch, ceoffs_CKCVBS);
+    CKCVBS_HIP(tmax, y, cv, scratch, ceoffs_CKCVBS, tidx);
     t = tmax - (emax - e) / cv;
     ierr = 1;
     return;
@@ -4135,8 +4139,8 @@ GET_T_GIVEN_EY_HIP(
   // for (int i = 0; i < maxiter; ++i) 
   {
     // count = count+1;
-    CKUBMS_HIP(t1, y, e1, scratch, ceoffs_CKUBMS);
-    CKCVBS_HIP(t1, y, cv, scratch, ceoffs_CKCVBS);
+    CKUBMS_HIP(t1, y, e1, scratch, ceoffs_CKUBMS, tidx);
+    CKCVBS_HIP(t1, y, cv, scratch, ceoffs_CKCVBS, tidx);
     dt = (e - e1) / cv;
     if (dt > 100.) {
       dt = 100.;
@@ -4156,13 +4160,14 @@ GET_T_GIVEN_EY_HIP(
 __device__ __forceinline__ void
 CKUMS_HIP(
   const amrex::Real T,
-  volatile amrex::Real ums[NUM_SPECIES],
-  const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES])
+  amrex::Real ums[NUM_SPECIES],
+  const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES],
+  const int tidx)
 {
-  speciesInternalEnergy_HIP(ums, T, ceoffs_CKUMS);
+  speciesInternalEnergy_HIP(ums, T, ceoffs_CKUMS, tidx);
 
-  if (threadIdx.x < NUM_SPECIES) {
-    ums[threadIdx.x] *= 8.31446261815324e+07 * T * imw(threadIdx.x);
+  if (tidx < NUM_SPECIES) {
+    ums[tidx] *= 8.31446261815324e+07 * T * imw(tidx);
   }
 }
 
@@ -4171,31 +4176,32 @@ __device__ __forceinline__ void
 CKYTCR_HIP(
   const amrex::Real rho,
   amrex::Real /*T*/,
-  volatile const amrex::Real y[NUM_SPECIES],
-  volatile amrex::Real c[64])
+  const amrex::Real y[NUM_SPECIES],
+  amrex::Real c[64],
+  const int tidx)
 {
-  if (threadIdx.x < NUM_SPECIES) {
-    c[threadIdx.x] = rho * y[threadIdx.x] * imw(threadIdx.x);
+  if (tidx < NUM_SPECIES) {
+    c[tidx] = rho * y[tidx] * imw(tidx);
   }
 }
 
 // compute the production rate for each species
 __device__ __forceinline__ void
 CKWC_HIP(
-  const amrex::Real T, volatile amrex::Real C[64], volatile amrex::Real wdot[NUM_SPECIES])
+  const amrex::Real T, amrex::Real C[64], amrex::Real wdot[NUM_SPECIES], const int tidx)
 {
   // convert to SI
-  if (threadIdx.x < NUM_SPECIES) {
-    C[threadIdx.x] *= 1.0e6;
+  if (tidx < NUM_SPECIES) {
+    C[tidx] *= 1.0e6;
   }
 
-  if (threadIdx.x == 0) {
+  if (tidx == 0) {
     productionRate_HIP(wdot, C, T);
   }
 
-  if (threadIdx.x < NUM_SPECIES) {
-    C[threadIdx.x] *= 1.0e-6;
-    wdot[threadIdx.x] *= 1.0e-6;
+  if (tidx < NUM_SPECIES) {
+    C[tidx] *= 1.0e-6;
+    wdot[tidx] *= 1.0e-6;
   }
 }
 

@@ -58,12 +58,13 @@ struct Fuego
 
   __device__ __forceinline__ static void TY2Cv_HIP(
     const amrex::Real T,
-    volatile const amrex::Real Y[NUM_SPECIES],
-    volatile amrex::Real scratch[64],
+    const amrex::Real Y[NUM_SPECIES],
+    amrex::Real scratch[64],
     amrex::Real& Cv,
-    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
+    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES],
+    const int tidx)
   {
-    CKCVBS_HIP(T, Y, Cv, scratch, ceoffs_CKCVBS);
+    CKCVBS_HIP(T, Y, Cv, scratch, ceoffs_CKCVBS, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -86,12 +87,13 @@ struct Fuego
   __device__ __forceinline__ static void RTY2Cv_HIP(
     const amrex::Real /*R*/,
     const amrex::Real T,
-    volatile const amrex::Real Y[NUM_SPECIES],
-    volatile amrex::Real scratch[64],
+    const amrex::Real Y[NUM_SPECIES],
+    amrex::Real scratch[64],
     amrex::Real& Cv,
-    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
+    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES],
+    const int tidx)
   {
-    TY2Cv_HIP(T, Y, scratch, Cv, ceoffs_CKCVBS);
+    TY2Cv_HIP(T, Y, scratch, Cv, ceoffs_CKCVBS, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -168,16 +170,17 @@ struct Fuego
 
   __device__ __forceinline__ static void EY2T_HIP(
     const amrex::Real E,
-    volatile const amrex::Real Y[NUM_SPECIES],
-    volatile amrex::Real scratch[64],
+    const amrex::Real Y[NUM_SPECIES],
+    amrex::Real scratch[64],
     amrex::Real& T,
     const amrex::Real ceoffs_CKUBMS[7*NUM_SPECIES], 
-    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
+    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES],
+    const int tidx)
   {
     // For Fuego this function is really just a wrapper for GET_T_GIVEN_EY_HIP
     // In SRK this will be different probably
     int lierr = 0;
-    GET_T_GIVEN_EY_HIP(E, Y, scratch, T, lierr, ceoffs_CKUBMS, ceoffs_CKCVBS);
+    GET_T_GIVEN_EY_HIP(E, Y, scratch, T, lierr, ceoffs_CKUBMS, ceoffs_CKCVBS, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -203,13 +206,14 @@ struct Fuego
   __device__ __forceinline__ static void REY2T_HIP(
     const amrex::Real /*R*/,
     const amrex::Real E,
-    volatile const amrex::Real Y[NUM_SPECIES],
-    volatile amrex::Real scratch[64],
+    const amrex::Real Y[NUM_SPECIES],
+    amrex::Real scratch[64],
     amrex::Real& T,
     const amrex::Real ceoffs_CKUBMS[7*NUM_SPECIES], 
-    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES])
+    const amrex::Real ceoffs_CKCVBS[6*NUM_SPECIES],
+    const int tidx)
   {
-    EY2T_HIP(E, Y, scratch, T, ceoffs_CKUBMS, ceoffs_CKCVBS);
+    EY2T_HIP(E, Y, scratch, T, ceoffs_CKUBMS, ceoffs_CKCVBS, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -301,15 +305,16 @@ struct Fuego
   __device__ __forceinline__ static void RTY2WDOT_HIP(
     const amrex::Real R,
     const amrex::Real T,
-    volatile const amrex::Real Y[NUM_SPECIES],
-    volatile amrex::Real WDOT[NUM_SPECIES],
-    volatile amrex::Real scratch[64])
+    const amrex::Real Y[NUM_SPECIES],
+    amrex::Real WDOT[NUM_SPECIES],
+    amrex::Real scratch[64],
+    const int tidx)
   {
-    CKYTCR_HIP(R, T, Y, scratch);
-    CKWC_HIP(T, scratch, WDOT);
+    CKYTCR_HIP(R, T, Y, scratch, tidx);
+    CKWC_HIP(T, scratch, WDOT, tidx);
 
-    if (threadIdx.x < NUM_SPECIES) {
-      WDOT[threadIdx.x] *= mw(threadIdx.x);
+    if (tidx < NUM_SPECIES) {
+      WDOT[tidx] *= mw(tidx);
     }
   }
 
@@ -368,10 +373,11 @@ struct Fuego
 
   __device__ __forceinline__ static void T2Ei_HIP(
     const amrex::Real T,
-    volatile amrex::Real Ei[NUM_SPECIES],
-    const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES])
+    amrex::Real Ei[NUM_SPECIES],
+    const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES],
+    const int tidx)
   {
-    CKUMS_HIP(T, Ei, ceoffs_CKUMS);
+    CKUMS_HIP(T, Ei, ceoffs_CKUMS, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE
@@ -393,11 +399,12 @@ struct Fuego
   __device__ __forceinline__ static void RTY2Ei_HIP(
     const amrex::Real /*R*/,
     const amrex::Real T,
-    volatile const amrex::Real* /*Y[]*/,
-    volatile amrex::Real Ei[NUM_SPECIES],
-    const amrex::Real ceoffs_CKUMS[6*NUM_SPECIES])
+    const amrex::Real* /*Y[]*/,
+    amrex::Real Ei[NUM_SPECIES],
+    const amrex::Real ceoffs_CKUMS[6*NUM_SPECIES],
+    const int tidx)
   {
-    T2Ei_HIP(T, Ei, ceoffs_CKUMS);
+    T2Ei_HIP(T, Ei, ceoffs_CKUMS, tidx);
   }
 
   AMREX_GPU_HOST_DEVICE

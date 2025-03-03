@@ -464,67 +464,83 @@ fKernelSpecOpt_HIP(
   const amrex::Real* ceoffs_CKCVBS,
   const amrex::Real* ceoffs_CKUMS)
 {
-  if (blockIdx.x < ncells) {
+  const int num_cells_per_block = 1;
+  const int lcl_cell_idx = threadIdx.x / 64;
+  const int glb_cell_idx = blockIdx.x * num_cells_per_block + lcl_cell_idx;
+  const int lcl_cell_thread_idx = threadIdx.x % 64;
 
-    __shared__ amrex::Real massfrac[NUM_SPECIES];
-    __shared__ amrex::Real ei_pt[NUM_SPECIES];
-    __shared__ amrex::Real cdots_pt[NUM_SPECIES];
-    __shared__ amrex::Real scratch[64];
+  if (glb_cell_idx < ncells) {
 
-    scratch[threadIdx.x] = 0.0;
+    __shared__ amrex::Real massfrac[num_cells_per_block][NUM_SPECIES];
+    __shared__ amrex::Real ei_pt[num_cells_per_block][NUM_SPECIES];
+    __shared__ amrex::Real cdots_pt[num_cells_per_block][NUM_SPECIES];
+    __shared__ amrex::Real scratch[num_cells_per_block][64];
 
-    if (threadIdx.x < NUM_SPECIES) {
-      massfrac[threadIdx.x] =
-        yvec_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
-      scratch[threadIdx.x] = massfrac[threadIdx.x];
+    scratch[lcl_cell_idx][lcl_cell_thread_idx] = 0.0;
+
+    if (lcl_cell_thread_idx < NUM_SPECIES) {
+      massfrac[lcl_cell_idx][lcl_cell_thread_idx] =
+        yvec_d[vec_index<OrderType>(lcl_cell_thread_idx, glb_cell_idx, ncells)];
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] = massfrac[lcl_cell_idx][lcl_cell_thread_idx];
     }
 
     for (int stride = 32; stride > 0; stride /= 2) {
-        if (threadIdx.x < stride) {
-            scratch[threadIdx.x] += scratch[threadIdx.x + stride];
-        }
+      if (lcl_cell_thread_idx < stride) {
+          scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + stride];
+      }
     }
 
     // this "should" be a broadcast
-    const amrex::Real rho_pt = scratch[0];
-    const amrex::Real rho_pt_inv = 1.0 / rho_pt;
-
-    if (threadIdx.x < NUM_SPECIES) {
-      massfrac[threadIdx.x] *= rho_pt_inv;
+    amrex::Real rho_pt = scratch[lcl_cell_idx][0];
+    amrex::Real rho_pt_inv = 1.0 / rho_pt;
+    
+    if (lcl_cell_thread_idx < NUM_SPECIES) {
+      massfrac[lcl_cell_idx][lcl_cell_thread_idx] *= rho_pt_inv;
     }
 
     const amrex::Real nrg_pt =
-      (rhoe_init[blockIdx.x] + rhoesrc_ext[blockIdx.x] * dt_save) * rho_pt_inv;
+      (rhoe_init[glb_cell_idx] + rhoesrc_ext[glb_cell_idx] * dt_save) * rho_pt_inv;
 
     amrex::Real temp_pt =
-      yvec_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)];
+      yvec_d[vec_index<OrderType>(NUM_SPECIES, glb_cell_idx, ncells)];
 
     amrex::Real Cv_pt = 0.0;
     auto eos = pele::physics::PhysicsType::eos();
 
-    eos.REY2T_HIP(rho_pt, nrg_pt, massfrac, scratch, temp_pt, ceoffs_CKUBMS, ceoffs_CKCVBS);
-    eos.RTY2Cv_HIP(rho_pt, temp_pt, massfrac, scratch, Cv_pt, ceoffs_CKCVBS);
-    eos.RTY2Ei_HIP(rho_pt, temp_pt, massfrac, ei_pt, ceoffs_CKUMS);
-    // eos.RTY2WDOT_HIP(rho_pt, temp_pt, massfrac, cdots_pt, scratch);
+    eos.REY2T_HIP(
+      rho_pt, nrg_pt, massfrac[lcl_cell_idx], scratch[lcl_cell_idx], temp_pt,
+      ceoffs_CKUBMS, ceoffs_CKCVBS, lcl_cell_thread_idx);
+    eos.RTY2Cv_HIP(
+      rho_pt, temp_pt, massfrac[lcl_cell_idx], scratch[lcl_cell_idx], Cv_pt,
+      ceoffs_CKCVBS, lcl_cell_thread_idx);
+    eos.RTY2Ei_HIP(
+      rho_pt, temp_pt, massfrac[lcl_cell_idx], ei_pt[lcl_cell_idx],
+      ceoffs_CKUMS, lcl_cell_thread_idx);
+    // eos.RTY2WDOT_HIP(
+    //   rho_pt, temp_pt, massfrac[lcl_cell_idx], cdots_pt[lcl_cell_idx], scratch[lcl_cell_idx],
+    //   lcl_cell_thread_idx);
 
-    if (threadIdx.x < NUM_SPECIES) {
-      scratch[threadIdx.x] =
-        cdots_pt[threadIdx.x] +
-        rYs[spec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)];
-      ydot_d[vec_index<OrderType>(threadIdx.x, blockIdx.x, ncells)] =
-        scratch[threadIdx.x];
-      scratch[threadIdx.x] *= ei_pt[threadIdx.x];
+    if (lcl_cell_thread_idx < NUM_SPECIES) {
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] =
+        cdots_pt[lcl_cell_idx][lcl_cell_thread_idx] +
+        rYs[spec_index<OrderType>(lcl_cell_thread_idx, glb_cell_idx, ncells)];
+
+      ydot_d[vec_index<OrderType>(lcl_cell_thread_idx, glb_cell_idx, ncells)] =
+        scratch[lcl_cell_idx][lcl_cell_thread_idx];
+
+      scratch[lcl_cell_idx][lcl_cell_thread_idx] *=
+        ei_pt[lcl_cell_idx][lcl_cell_thread_idx];
     }
 
     for (int stride = 32; stride > 0; stride /= 2) {
-        if (threadIdx.x < stride) {
-            scratch[threadIdx.x] += scratch[threadIdx.x + stride];
-        }
+      if (lcl_cell_thread_idx < stride) {
+          scratch[lcl_cell_idx][lcl_cell_thread_idx] += scratch[lcl_cell_idx][lcl_cell_thread_idx + stride];
+      }
     }
 
-    if (threadIdx.x == 0) {
-      ydot_d[vec_index<OrderType>(NUM_SPECIES, blockIdx.x, ncells)] =
-        (rhoesrc_ext[blockIdx.x] - scratch[0]) * (rho_pt_inv / Cv_pt);
+    if (lcl_cell_thread_idx == 0) {
+      ydot_d[vec_index<OrderType>(NUM_SPECIES, glb_cell_idx, ncells)] =
+        (rhoesrc_ext[glb_cell_idx] - scratch[lcl_cell_idx][0]) * (rho_pt_inv / Cv_pt);
     }
   }
 }
