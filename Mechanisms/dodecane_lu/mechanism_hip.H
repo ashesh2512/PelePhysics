@@ -7,9 +7,9 @@
 __device__ __forceinline__ void
 CKUBMS_HIP(
   const amrex::Real T,
-  volatile const amrex::Real y[],
+  const amrex::Real y[],
   amrex::Real& ubms,
-  volatile amrex::Real scratch[],
+  amrex::Real scratch[],
   const amrex::Real ceoffs_CKUBMS[7 * NUM_SPECIES])
 {
   amrex::Real result = 0.0;
@@ -62,9 +62,9 @@ CKUBMS_HIP(
 __device__ __forceinline__ void
 CKCVBS_HIP(
   const amrex::Real T,
-  volatile const amrex::Real y[],
+  const amrex::Real y[],
   amrex::Real& cvbs,
-  volatile amrex::Real scratch[],
+  amrex::Real scratch[],
   const amrex::Real ceoffs_CKCVBS[6 * NUM_SPECIES])
 {
   amrex::Real result = 0.0;
@@ -111,7 +111,7 @@ CKCVBS_HIP(
 // compute the e/(RT) at the given temperature
 __device__ __forceinline__ void
 speciesInternalEnergy_HIP(
-  volatile amrex::Real* species,
+  amrex::Real* species,
   const amrex::Real T,
   const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES])
 {
@@ -147,8 +147,8 @@ speciesInternalEnergy_HIP(
 
 __device__ __forceinline__ void
 productionRate_HIP(
-  volatile amrex::Real* wdot,
-  volatile const amrex::Real* sc,
+  amrex::Real* wdot,
+  const amrex::Real* sc,
   const amrex::Real T)
 {
   const amrex::Real invT = 1.0 / T;
@@ -4094,8 +4094,8 @@ productionRate_HIP(
 __device__ __forceinline__ void
 GET_T_GIVEN_EY_HIP(
   const amrex::Real e,
-  volatile const amrex::Real y[],
-  volatile amrex::Real scratch[64],
+  const amrex::Real y[],
+  amrex::Real scratch[64],
   amrex::Real& t,
   int& ierr,
   const amrex::Real ceoffs_CKUBMS[7*NUM_SPECIES], 
@@ -4156,7 +4156,7 @@ GET_T_GIVEN_EY_HIP(
 __device__ __forceinline__ void
 CKUMS_HIP(
   const amrex::Real T,
-  volatile amrex::Real ums[NUM_SPECIES],
+  amrex::Real ums[NUM_SPECIES],
   const amrex::Real ceoffs_CKUMS[6 * NUM_SPECIES])
 {
   speciesInternalEnergy_HIP(ums, T, ceoffs_CKUMS);
@@ -4171,8 +4171,8 @@ __device__ __forceinline__ void
 CKYTCR_HIP(
   const amrex::Real rho,
   amrex::Real /*T*/,
-  volatile const amrex::Real y[NUM_SPECIES],
-  volatile amrex::Real c[64])
+  const amrex::Real y[NUM_SPECIES],
+  amrex::Real c[64])
 {
   if (threadIdx.x < NUM_SPECIES) {
     c[threadIdx.x] = rho * y[threadIdx.x] * imw(threadIdx.x);
@@ -4182,7 +4182,7 @@ CKYTCR_HIP(
 // compute the production rate for each species
 __device__ __forceinline__ void
 CKWC_HIP(
-  const amrex::Real T, volatile amrex::Real C[64], volatile amrex::Real wdot[NUM_SPECIES])
+  const amrex::Real T, amrex::Real C[64], amrex::Real wdot[NUM_SPECIES])
 {
   // convert to SI
   if (threadIdx.x < NUM_SPECIES) {
